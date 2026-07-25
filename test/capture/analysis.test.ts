@@ -37,6 +37,12 @@ describe("detectOnsets", () => {
     expect(onsets).toHaveLength(2);
   });
 
+  it("does not re-trigger on a hit's low-level decay tail", () => {
+    // tail bump at 2% of the transient, 100ms later — like a 909 kick's boom
+    const pcm = synth([{ t: 0.2, amp: 0.9 }, { t: 0.3, amp: 0.018 }], 1);
+    expect(detectOnsets(pcm, SR)).toHaveLength(1);
+  });
+
   it("returns nothing for silence", () => {
     expect(detectOnsets(new Float32Array(SR), SR)).toHaveLength(0);
   });
@@ -59,7 +65,7 @@ describe("matchOnsetsToGrid", () => {
     expect(r.matched).toHaveLength(3);
     expect(r.missed).toEqual([1.5]);
     expect(r.extra).toEqual([1.9]);
-    expect(r.meanAbsErrMs).toBeLessThan(5);
+    expect(r.meanAbsErr).toBeLessThan(0.005);
   });
 });
 

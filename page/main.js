@@ -28,6 +28,7 @@ Promise.resolve(
 ).then(
   (r) => {
     repl = r;
+    flushQueued(); // an evaluate may have arrived after arm but before init resolved
   },
   (err) => console.error("initStrudel failed:", err),
 );
@@ -62,30 +63,45 @@ function schedulerCps() {
 const SWAP_LEAD_MS = 300;
 
 function applyEvaluate(code) {
-  if (!state.armed) {
+  // Warm the bank's samples immediately — by swap time (up to a bar away) the
+  // fetches have had time to land, so the new kit's first hits don't drop.
+  const bank = code.match(/\.bank\("(\w+)"\)/)?.[1] ?? null;
+  if (bank) warmBank(bank);
+
+  if (!state.armed || !repl) {
     state.queued = code;
     render();
     return;
   }
   let delayMs = 0;
   if (state.playing) {
-    const cps = schedulerCps();
-    const remainMs = msUntilNextCycle(schedulerNow() ?? 0, cps);
-    delayMs = remainMs - SWAP_LEAD_MS;
-    if (delayMs < 0) delayMs += 1000 / cps;
+    const now = schedulerNow();
+    if (now !== null) {
+      const cps = schedulerCps();
+      delayMs = msUntilNextCycle(now, cps) - SWAP_LEAD_MS;
+      if (delayMs < 0) delayMs += 1000 / cps;
+    }
+    // introspection failed → delayMs stays 0: swap immediately rather than
+    // guessing a phase (degraded but correct-ish; the harness would catch it)
   }
   clearTimeout(state.pendingSwap);
   state.pendingSwap = setTimeout(() => {
-    evaluate(code);
+    repl.evaluate(code);
     state.playing = true;
     state.code = code;
     state.tempo = code.match(/setcpm\(([\d.]+)\/4\)/)?.[1] ?? state.tempo;
-    const bank = code.match(/\.bank\("(\w+)"\)/)?.[1] ?? null;
-    if (bank && bank !== state.bank) warmBank(bank);
     state.bank = bank ?? state.bank;
     render();
     sendStatus();
   }, delayMs);
+}
+
+function flushQueued() {
+  if (state.armed && repl && state.queued) {
+    const code = state.queued;
+    state.queued = null;
+    applyEvaluate(code);
+  }
 }
 
 // NOTE: the global `hush` is the silence *pattern* function (it returns a
@@ -102,7 +118,10 @@ function applyHush() {
 // ---- sample pre-warm: pull this bank's files into the HTTP cache so first
 // triggers don't drop (superdough fetches lazily on first hit)
 let sampleMapPromise = null;
+const warmedBanks = new Set();
 async function warmBank(bank) {
+  if (warmedBanks.has(bank)) return;
+  warmedBanks.add(bank);
   try {
     sampleMapPromise ??= fetch(SAMPLE_MAP_URL).then((r) => r.json());
     const map = await sampleMapPromise;
@@ -163,11 +182,7 @@ setInterval(sendStatus, 2000);
 el("arm").addEventListener("click", () => {
   state.armed = true;
   el("overlay").classList.add("hidden");
-  if (state.queued) {
-    const code = state.queued;
-    state.queued = null;
-    applyEvaluate(code);
-  }
+  flushQueued();
   render();
   sendStatus();
 });

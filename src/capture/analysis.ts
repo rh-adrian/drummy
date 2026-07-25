@@ -32,7 +32,9 @@ export function detectOnsets(samples: Float32Array, sampleRate: number): number[
   const floor = sorted[Math.floor(sorted.length * 0.5)]; // median = noise floor
   const peak = sorted[sorted.length - 1];
   if (peak < 1e-4) return []; // effectively silence
-  const threshold = Math.max(floor * 3, peak * 0.02);
+  // 4% of peak: real drum-sample decay tails sit ~2% of the hit's transient and
+  // must not re-trigger, while ghost notes (vel 0.2+) land well above this.
+  const threshold = Math.max(floor * 3, peak * 0.04);
 
   const onsets: number[] = [];
   const refractoryHops = Math.round(REFRACTORY_SEC / HOP_SEC);
@@ -63,14 +65,18 @@ export function rmsAround(
 }
 
 export interface GridMatch {
-  matched: Array<{ grid: number; onset: number; errMs: number }>;
+  matched: Array<{ grid: number; onset: number; err: number }>;
   missed: number[];
   extra: number[];
-  meanAbsErrMs: number;
+  meanAbsErr: number;
 }
 
-/** Greedily pair detected onsets with expected grid times within tolSec. */
-export function matchOnsetsToGrid(onsets: number[], grid: number[], tolSec: number): GridMatch {
+/**
+ * Greedily pair detected onsets with expected grid times within tol.
+ * Unit-agnostic: onsets, grid, tol, and the returned errors share whatever
+ * unit the caller uses (seconds or ms), as long as it's consistent.
+ */
+export function matchOnsetsToGrid(onsets: number[], grid: number[], tol: number): GridMatch {
   const remaining = [...onsets];
   const matched: GridMatch["matched"] = [];
   const missed: number[] = [];
@@ -84,17 +90,17 @@ export function matchOnsetsToGrid(onsets: number[], grid: number[], tolSec: numb
         bestIdx = i;
       }
     });
-    if (bestIdx >= 0 && bestErr <= tolSec) {
-      matched.push({ grid: g, onset: remaining[bestIdx], errMs: bestErr * 1000 });
+    if (bestIdx >= 0 && bestErr <= tol) {
+      matched.push({ grid: g, onset: remaining[bestIdx], err: bestErr });
       remaining.splice(bestIdx, 1);
     } else {
       missed.push(g);
     }
   }
-  const meanAbsErrMs = matched.length
-    ? matched.reduce((s, m) => s + m.errMs, 0) / matched.length
+  const meanAbsErr = matched.length
+    ? matched.reduce((s, m) => s + m.err, 0) / matched.length
     : 0;
-  return { matched, missed, extra: remaining, meanAbsErrMs };
+  return { matched, missed, extra: remaining, meanAbsErr };
 }
 
 /** Median inter-onset interval in seconds (0 if fewer than 2 onsets). */

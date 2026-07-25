@@ -22,7 +22,9 @@ import {
 
 const PORT = 4790;
 const CAPTURE_DIR = "captures";
-const BPM = 120;
+// Deliberately NOT 120: the page's cps-introspection fallback is 0.5 cps
+// (120 BPM), so a 120 BPM run can't tell real introspection from the fallback.
+const BPM = 96;
 const STEP_MS = (60_000 / BPM) * (4 / 16); // 125 ms per 16th at 120 BPM
 const BAR_MS = STEP_MS * 16; // 2000 ms
 const SWING = 0.3; // fraction of a step (D-14) → 37.5 ms late on odd steps
@@ -136,9 +138,9 @@ async function main() {
   console.error("recording session…");
   await page.evaluate("window.__recording = true");
   sidecar.push({ type: "evaluate", code: grooveA }); // applies at next bar
-  await sleep(6300); // ~3 bars of A
+  await sleep(3.2 * BAR_MS); // ~3 bars of A
   sidecar.push({ type: "evaluate", code: grooveB }); // mid-bar push → quantized
-  await sleep(4200); // ~2 bars of B
+  await sleep(2.1 * BAR_MS); // ~2 bars of B
   sidecar.push({ type: "hush" });
   await sleep(1500);
   await page.evaluate("window.__recording = false");
@@ -174,12 +176,13 @@ function analyze(pcm: Float32Array, sampleRate: number) {
   check("onsets detected", onsets.length > 20, `${onsets.length} onsets`);
   if (onsets.length <= 20) return;
 
-  // --- segment the session: A = sparse (kick quarters + snares), B = dense 16th hats.
-  // B starts at the first onset followed by consistently sub-200ms intervals.
+  // --- segment the session: A = sparse (min gap 2 steps), B = dense 16th hats
+  // (max gap = a swung long step, (1+SWING)·step). Split at the midpoint.
+  const denseMs = (STEP_MS * (1 + SWING) + STEP_MS * 2) / 2; // 1.65 · step at SWING 0.3
   let swapIdx = -1;
   for (let i = 0; i < onsets.length - 3; i++) {
     const next = [1, 2, 3].map((k) => onsets[i + k] - onsets[i + k - 1]);
-    if (next.every((d) => d < 200)) {
+    if (next.every((d) => d < denseMs)) {
       swapIdx = i;
       break;
     }
@@ -204,17 +207,13 @@ function analyze(pcm: Float32Array, sampleRate: number) {
       gridA.push(t0 + bar * BAR_MS + step * STEP_MS);
     }
   }
-  const matchA = matchOnsetsToGrid(
-    aOnsets.map((t) => t),
-    gridA,
-    30,
-  );
+  const matchA = matchOnsetsToGrid(aOnsets, gridA, 30); // all in ms
   check(
     "groove A onsets on grid",
     matchA.missed.length === 0 && matchA.extra.length === 0,
-    `${matchA.matched.length} matched, ${matchA.missed.length} missed, ${matchA.extra.length} extra, mean err ${matchA.meanAbsErrMs.toFixed(1)}ms`,
+    `${matchA.matched.length} matched, ${matchA.missed.length} missed, ${matchA.extra.length} extra, mean err ${matchA.meanAbsErr.toFixed(1)}ms`,
   );
-  check("grid timing tight", matchA.meanAbsErrMs < 15, `${matchA.meanAbsErrMs.toFixed(1)}ms mean abs error`);
+  check("grid timing tight", matchA.meanAbsErr < 15, `${matchA.meanAbsErr.toFixed(1)}ms mean abs error`);
 
   // --- tempo from kick quarters (steps 0,4,8,12 → 500 ms apart).
   const kicks = gridA

@@ -4,8 +4,10 @@
 // lands mid-bar. To make groove changes musical (D-10) the page delays the swap
 // until the next cycle boundary: one Strudel cycle = one bar (D-11).
 
-// Within this many ms of the boundary, swap immediately: a timeout that short
-// would fire just AFTER the boundary and push the swap a full bar late.
+// Within this many ms of the boundary, report the boundary itself (0): a
+// remainder this small is inside timer jitter. Callers subtracting a swap lead
+// (see main.js) then roll to the following bar line, same as any remainder
+// smaller than the lead.
 const SNAP_MS = 10;
 
 /**

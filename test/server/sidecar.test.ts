@@ -108,6 +108,59 @@ describe("startSidecar", () => {
     expect(s.pageConnected()).toBe(false);
   });
 
+  it("returns 400 for malformed percent-encoding instead of crashing", async () => {
+    const s = await start();
+    const res = await fetch(`http://127.0.0.1:${PORT}/%`);
+    expect(res.status).toBe(400);
+    // server must still be alive
+    expect((await fetch(`http://127.0.0.1:${PORT}/`)).status).toBe(200);
+  });
+
+  it("replays hush (not the stale groove) to a page that reconnects after stop", async () => {
+    const s = await start();
+    s.push({ type: "evaluate", code: '$: s("bd")' });
+    s.push({ type: "hush" });
+    const client = await connect(PORT);
+    expect(await client.next()).toEqual({ type: "hush" });
+    client.ws.close();
+  });
+
+  it("replays the last setCps after the evaluate to a late-joining page", async () => {
+    const s = await start();
+    s.push({ type: "evaluate", code: '$: s("bd")' });
+    s.push({ type: "setCps", cps: 0.4 });
+    const client = await connect(PORT);
+    expect(await client.next()).toEqual({ type: "evaluate", code: '$: s("bd")' });
+    expect(await client.next()).toEqual({ type: "setCps", cps: 0.4 });
+    client.ws.close();
+  });
+
+  it("a new evaluate clears any superseded setCps from the replay", async () => {
+    const s = await start();
+    s.push({ type: "setCps", cps: 0.4 });
+    s.push({ type: "evaluate", code: '$: s("sd")' });
+    const client = await connect(PORT);
+    expect(await client.next()).toEqual({ type: "evaluate", code: '$: s("sd")' });
+    // no trailing setCps — the evaluate's own setcpm is authoritative
+    const race = await Promise.race([
+      client.next(),
+      new Promise((r) => setTimeout(() => r("nothing"), 150)),
+    ]);
+    expect(race).toBe("nothing");
+    client.ws.close();
+  });
+
+  it("clears lastStatus when the last page disconnects", async () => {
+    const s = await start();
+    const { ws } = await connect(PORT);
+    ws.send(JSON.stringify({ type: "status", playing: true }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.lastStatus()).toMatchObject({ playing: true });
+    ws.close();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.lastStatus()).toBeNull();
+  });
+
   it("rejects with an actionable error when the port is in use", async () => {
     const s = await start();
     await expect(startSidecar({ port: PORT })).rejects.toThrow(

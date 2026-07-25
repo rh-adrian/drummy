@@ -53,7 +53,14 @@ const MIME: Record<string, string> = {
 };
 
 async function serveStatic(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const urlPath = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+  let urlPath: string;
+  try {
+    urlPath = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+  } catch {
+    // malformed percent-encoding (e.g. GET /%) — must not escape the handler
+    res.writeHead(400, { connection: "close" }).end("bad request");
+    return;
+  }
   const rel = urlPath === "/" ? "index.html" : urlPath.slice(1);
   const file = path.resolve(PAGE_DIR, rel);
   const ext = path.extname(file);
@@ -81,7 +88,14 @@ export async function startSidecar(opts: { port?: number } = {}): Promise<Sideca
   const port = opts.port ?? resolvePort();
 
   const server = createServer((req, res) => {
-    void serveStatic(req, res);
+    serveStatic(req, res).catch((err) => {
+      console.error("[sidecar] static handler error:", err);
+      try {
+        res.writeHead(500, { connection: "close" }).end();
+      } catch {
+        /* headers already sent */
+      }
+    });
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -105,12 +119,22 @@ export async function startSidecar(opts: { port?: number } = {}): Promise<Sideca
   // uncaught exception.
   const wss = new WebSocketServer({ server, path: "/ws" });
 
+  // Post-listen errors must not become uncaught 'error' event crashes.
+  server.on("error", (err) => console.error("[sidecar] server error:", err));
+  wss.on("error", (err) => console.error("[sidecar] ws error:", err));
+
+  // Transport state replayed to (re)connecting pages, so a page that drops and
+  // reconnects converges instead of playing a stale groove or missing a stop.
   let lastEvaluate: SidecarPush | null = null;
+  let lastCps: SidecarPush | null = null; // a setCps issued after lastEvaluate
+  let hushed = false;
   let lastStatus: PageStatus | null = null;
   const pageSockets = new Set<WebSocket>();
 
   wss.on("connection", (ws) => {
+    if (hushed) ws.send(JSON.stringify({ type: "hush" }));
     if (lastEvaluate) ws.send(JSON.stringify(lastEvaluate));
+    if (lastCps) ws.send(JSON.stringify(lastCps));
     ws.on("message", (data) => {
       let msg: unknown;
       try {
@@ -123,15 +147,27 @@ export async function startSidecar(opts: { port?: number } = {}): Promise<Sideca
         pageSockets.add(ws);
       }
     });
-    ws.on("close", () => pageSockets.delete(ws));
+    ws.on("close", () => {
+      pageSockets.delete(ws);
+      if (pageSockets.size === 0) lastStatus = null;
+    });
   });
 
   return {
     port,
     url: `http://localhost:${port}`,
     push(msg) {
-      if (msg.type === "evaluate") lastEvaluate = msg;
-      if (msg.type === "hush") lastEvaluate = null;
+      if (msg.type === "evaluate") {
+        lastEvaluate = msg;
+        lastCps = null; // the evaluate's own setcpm is authoritative again
+        hushed = false;
+      } else if (msg.type === "setCps") {
+        lastCps = msg;
+      } else if (msg.type === "hush") {
+        lastEvaluate = null;
+        lastCps = null;
+        hushed = true;
+      }
       const data = JSON.stringify(msg);
       for (const ws of wss.clients) {
         if (ws.readyState === WebSocket.OPEN) ws.send(data);

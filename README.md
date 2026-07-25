@@ -51,7 +51,10 @@ The pattern schema must include **per-hit velocity and micro-timing offsets**. T
 ## Status
 
 In development, spec-driven — see [specs/drummer-v1/SPEC.md](specs/drummer-v1/SPEC.md).
-M1 (groove schema + Strudel compiler) complete. Research background in [RESEARCH.md](RESEARCH.md).
+M1 (groove schema + Strudel compiler) and M2 (websocket sidecar + Strudel page with
+bar-quantized hot-swaps + automated audio-verification harness) complete; next is M3,
+the MCP tool surface. Try it today without MCP: `npm run dev:jam`, open
+http://localhost:4747, click Start. Research background in [RESEARCH.md](RESEARCH.md).
 Future expansions (e.g., mouthed-bassline → bass MIDI) are parked in [IDEAS.md](IDEAS.md).
 
 ## License
