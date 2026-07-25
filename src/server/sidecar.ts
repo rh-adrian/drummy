@@ -27,11 +27,15 @@ export interface Sidecar {
   url: string;
   /** Broadcast to all connected pages; the last evaluate is replayed to late joiners. */
   push(msg: SidecarPush): void;
-  /** True while at least one page that has sent a status heartbeat is connected. */
+  /** True while at least one page has sent a status heartbeat recently (guards against half-open sockets). */
   pageConnected(): boolean;
   lastStatus(): PageStatus | null;
   close(): Promise<void>;
 }
+
+// Pages heartbeat every 2s; three missed beats + slack means the socket is
+// half-open (sleeping laptop, killed tab) even if TCP hasn't noticed yet.
+export const HEARTBEAT_FRESH_MS = 7000;
 
 export function resolvePort(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.AI_DRUMMER_PORT;
@@ -84,8 +88,11 @@ async function serveStatic(req: IncomingMessage, res: ServerResponse): Promise<v
   }
 }
 
-export async function startSidecar(opts: { port?: number } = {}): Promise<Sidecar> {
+export async function startSidecar(
+  opts: { port?: number; heartbeatFreshMs?: number } = {},
+): Promise<Sidecar> {
   const port = opts.port ?? resolvePort();
+  const heartbeatFreshMs = opts.heartbeatFreshMs ?? HEARTBEAT_FRESH_MS;
 
   const server = createServer((req, res) => {
     serveStatic(req, res).catch((err) => {
@@ -129,7 +136,7 @@ export async function startSidecar(opts: { port?: number } = {}): Promise<Sideca
   let lastCps: SidecarPush | null = null; // a setCps issued after lastEvaluate
   let hushed = false;
   let lastStatus: PageStatus | null = null;
-  const pageSockets = new Set<WebSocket>();
+  const pageSockets = new Map<WebSocket, number>(); // socket → last heartbeat time
 
   wss.on("connection", (ws) => {
     if (hushed) ws.send(JSON.stringify({ type: "hush" }));
@@ -144,7 +151,7 @@ export async function startSidecar(opts: { port?: number } = {}): Promise<Sideca
       }
       if (msg && typeof msg === "object" && (msg as PageStatus).type === "status") {
         lastStatus = msg as PageStatus;
-        pageSockets.add(ws);
+        pageSockets.set(ws, Date.now());
       }
     });
     ws.on("close", () => {
@@ -174,8 +181,9 @@ export async function startSidecar(opts: { port?: number } = {}): Promise<Sideca
       }
     },
     pageConnected() {
-      for (const ws of pageSockets) {
-        if (ws.readyState === WebSocket.OPEN) return true;
+      const now = Date.now();
+      for (const [ws, lastBeat] of pageSockets) {
+        if (ws.readyState === WebSocket.OPEN && now - lastBeat <= heartbeatFreshMs) return true;
       }
       return false;
     },

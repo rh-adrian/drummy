@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ai-drummer": {
+      "command": "node",
+      "args": ["/absolute/path/to/ai-drummer/dist/index.js"],
+      "env": {
+        "AI_DRUMMER_PORT": "4747"
+      }
+    }
+  }
+}

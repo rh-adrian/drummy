@@ -161,6 +161,23 @@ describe("startSidecar", () => {
     expect(s.lastStatus()).toBeNull();
   });
 
+  it("treats a page as disconnected once its heartbeats go stale (half-open socket)", async () => {
+    const s = await startSidecar({ port: PORT, heartbeatFreshMs: 120 });
+    sidecars.push(s);
+    const { ws } = await connect(PORT);
+    ws.send(JSON.stringify({ type: "status", playing: true }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.pageConnected()).toBe(true);
+    // Socket stays open but heartbeats stop — e.g. a sleeping laptop's half-open TCP.
+    await new Promise((r) => setTimeout(r, 250));
+    expect(s.pageConnected()).toBe(false);
+    // A fresh heartbeat revives it.
+    ws.send(JSON.stringify({ type: "status", playing: true }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.pageConnected()).toBe(true);
+    ws.close();
+  });
+
   it("rejects with an actionable error when the port is in use", async () => {
     const s = await start();
     await expect(startSidecar({ port: PORT })).rejects.toThrow(
