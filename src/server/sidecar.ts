@@ -27,6 +27,12 @@ export interface Sidecar {
   url: string;
   /** Broadcast to all connected pages; the last evaluate is replayed to late joiners. */
   push(msg: SidecarPush): void;
+  /**
+   * Update the replayed evaluate WITHOUT broadcasting — for changes already
+   * delivered live another way (set_tempo pushes setCps to running pages, but
+   * a reloading page must replay code with the new setcpm, not the stale one).
+   */
+  setLastEvaluate(code: string): void;
   /** True while at least one page has sent a status heartbeat recently (guards against half-open sockets). */
   pageConnected(): boolean;
   lastStatus(): PageStatus | null;
@@ -179,6 +185,11 @@ export async function startSidecar(
       for (const ws of wss.clients) {
         if (ws.readyState === WebSocket.OPEN) ws.send(data);
       }
+    },
+    setLastEvaluate(code) {
+      lastEvaluate = { type: "evaluate", code };
+      lastCps = null;
+      hushed = false;
     },
     pageConnected() {
       const now = Date.now();

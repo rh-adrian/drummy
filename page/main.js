@@ -153,8 +153,11 @@ function connect() {
     }
     if (msg.type === "evaluate") applyEvaluate(msg.code);
     else if (msg.type === "hush") applyHush();
-    else if (msg.type === "setCps" && Number.isFinite(msg.cps) && msg.cps > 0)
+    else if (msg.type === "setCps" && Number.isFinite(msg.cps) && msg.cps > 0) {
       repl?.setCps(msg.cps);
+      state.tempo = String(Math.round(msg.cps * 240)); // one cycle = one bar of 4/4
+      render();
+    }
   };
   ws.onclose = () => {
     state.wsOpen = false;

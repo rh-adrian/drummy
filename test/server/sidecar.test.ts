@@ -135,6 +135,32 @@ describe("startSidecar", () => {
     client.ws.close();
   });
 
+  it("setLastEvaluate updates the replay without broadcasting and clears a stale setCps", async () => {
+    const s = await start();
+    const live = await connect(PORT);
+    s.push({ type: "evaluate", code: 'setcpm(96/4)\n$: s("bd")' });
+    s.push({ type: "setCps", cps: 0.5 });
+    expect(await live.next()).toMatchObject({ type: "evaluate" });
+    expect(await live.next()).toEqual({ type: "setCps", cps: 0.5 });
+    s.setLastEvaluate('setcpm(120/4)\n$: s("bd")');
+    // No broadcast to the live page…
+    const race = await Promise.race([
+      live.next(),
+      new Promise((r) => setTimeout(() => r("nothing"), 150)),
+    ]);
+    expect(race).toBe("nothing");
+    // …but a reconnecting page replays the fresh code with no stale setCps.
+    const rejoiner = await connect(PORT);
+    expect(await rejoiner.next()).toEqual({ type: "evaluate", code: 'setcpm(120/4)\n$: s("bd")' });
+    const race2 = await Promise.race([
+      rejoiner.next(),
+      new Promise((r) => setTimeout(() => r("nothing"), 150)),
+    ]);
+    expect(race2).toBe("nothing");
+    live.ws.close();
+    rejoiner.ws.close();
+  });
+
   it("a new evaluate clears any superseded setCps from the replay", async () => {
     const s = await start();
     s.push({ type: "setCps", cps: 0.4 });

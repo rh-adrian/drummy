@@ -13,6 +13,7 @@ import type { PageStatus, SidecarPush } from "../../src/server/sidecar.js";
 interface MockSidecar extends SidecarHandle {
   pushes: SidecarPush[];
   connected: boolean;
+  replayCode: string | null;
 }
 
 function mockSidecar(): MockSidecar {
@@ -21,8 +22,14 @@ function mockSidecar(): MockSidecar {
     url: "http://localhost:4747",
     pushes: [],
     connected: true,
+    replayCode: null,
     push(msg: SidecarPush) {
       self.pushes.push(msg);
+      if (msg.type === "evaluate") self.replayCode = msg.code;
+      if (msg.type === "hush") self.replayCode = null;
+    },
+    setLastEvaluate(code: string) {
+      self.replayCode = code;
     },
     pageConnected() {
       return self.connected;
@@ -98,6 +105,15 @@ describe("play_groove", () => {
     expect(sidecar.pushes).toHaveLength(0);
   });
 
+  it("routes missing required fields through parseGroove, not protocol validation", async () => {
+    const { client } = await setup();
+    const noTempo = { bank: "RolandTR808", voices: [{ drum: "bd", hits: [{ step: 0 }] }] };
+    const res = (await client.callTool({ name: "play_groove", arguments: { groove: noTempo } })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("Invalid groove"); // curated message, not a zod JSON dump
+    expect(text(res)).not.toContain("-32602");
+  });
+
   it("returns isError naming the page URL when no page is connected", async () => {
     const { client, sidecar } = await setup();
     sidecar.connected = false;
@@ -168,6 +184,30 @@ describe("update_groove", () => {
     if (push.type === "evaluate") expect(push.code).toContain("setcpm(104/4)");
   });
 
+  it("rejects a drum listed in both voices and removeDrums", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const res = (await client.callTool({
+      name: "update_groove",
+      arguments: { voices: [{ drum: "hh", hits: [{ step: 0 }] }], removeDrums: ["hh"] },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("hh");
+    expect(sidecar.pushes).toHaveLength(1);
+  });
+
+  it("rejects an empty update (e.g. args mistakenly nested under groove)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const res = (await client.callTool({
+      name: "update_groove",
+      arguments: { groove: { tempoBpm: 120 } }, // unknown key is stripped → no edits
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("top level");
+    expect(sidecar.pushes).toHaveLength(1);
+  });
+
   it("rejects an update that would leave the groove invalid", async () => {
     const { client, sidecar } = await setup();
     await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
@@ -195,6 +235,13 @@ describe("set_tempo", () => {
     if (push.type === "setCps") expect(push.cps).toBeCloseTo(0.5, 6); // 120 BPM / 240
     const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
     expect(np.tempoBpm).toBe(120);
+  });
+
+  it("updates the replayed evaluate so a reloading page gets the new tempo", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    await client.callTool({ name: "set_tempo", arguments: { bpm: 120 } });
+    expect(sidecar.replayCode).toContain("setcpm(120/4)");
   });
 
   it("rejects out-of-range tempo and errors when nothing is playing", async () => {
@@ -241,6 +288,16 @@ describe("stop / restart", () => {
     expect(np.playing).toBe(false);
     const again = (await client.callTool({ name: "stop", arguments: {} })) as CallToolResult;
     expect(again.isError).toBeFalsy();
+  });
+
+  it("stop works even when the page is disconnected (clears replay state)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.connected = false; // tab closed mid-jam
+    const res = (await client.callTool({ name: "stop", arguments: {} })) as CallToolResult;
+    expect(res.isError).toBeFalsy();
+    expect(sidecar.pushes[1]).toEqual({ type: "hush" });
+    expect(sidecar.replayCode).toBeNull(); // a page opened later stays silent
   });
 
   it("play_groove after stop starts clean", async () => {
@@ -356,8 +413,8 @@ describe("stdio hygiene (NFR-2)", () => {
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
       const content = await readFile(file, "utf8");
-      expect(content, `${file} must not use console.log (stdout carries JSON-RPC)`).not.toMatch(
-        /console\.log\(/,
+      expect(content, `${file} must not write to stdout (it carries JSON-RPC)`).not.toMatch(
+        /console\.(log|info|debug)\(|process\.stdout\.write/,
       );
     }
   });

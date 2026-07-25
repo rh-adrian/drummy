@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { parseGroove, type Groove, type Voice } from "../core/groove.js";
+import { parseGroove, type Groove } from "../core/groove.js";
 import { compileGroove } from "../core/compile.js";
 import { BANKS, BANK_NAMES, DRUMS, DRUM_ABBRS } from "../core/kits.js";
 import type { PageStatus, SidecarPush } from "./sidecar.js";
@@ -18,6 +18,7 @@ export interface SidecarHandle {
   port: number;
   url: string;
   push(msg: SidecarPush): void;
+  setLastEvaluate(code: string): void;
   pageConnected(): boolean;
   lastStatus(): PageStatus | null;
 }
@@ -47,18 +48,19 @@ function err(text: string): CallToolResult {
 }
 
 // ---------------------------------------------------------------------------
-// Input schemas: permissive on purpose (all groove fields optional at the
-// protocol layer) so malformed grooves reach parseGroove and come back as
+// Input schemas: permissive on purpose — EVERY groove field is optional at the
+// protocol layer so malformed grooves reach parseGroove and come back as
 // actionable isError text instead of opaque JSON-RPC validation errors.
+// The "REQUIRED." markers are documentation for the LLM, not schema law.
 // ---------------------------------------------------------------------------
 
 const hitShape = z
   .object({
-    step: z.number().describe("Grid step, 0-based, < bars*resolution. REQUIRED."),
+    step: z.number().optional().describe("Grid step, 0-based, < bars*resolution. REQUIRED."),
     vel: z
       .number()
       .optional()
-      .describe("Velocity 0-1. 1.0 = full accent, 0.7-0.9 = normal, 0.2-0.4 = ghost note. Default 1."),
+      .describe("Velocity, >0 and <=1. 1.0 = full accent, 0.7-0.9 = normal, 0.2-0.4 = ghost note. Default 1."),
     micro: z
       .number()
       .optional()
@@ -70,8 +72,8 @@ const hitShape = z
 
 const voiceShape = z
   .object({
-    drum: z.string().describe(`Drum voice. One of: ${DRUM_ABBRS.join(", ")}. REQUIRED.`),
-    hits: z.array(hitShape).describe("The hits for this drum, one per step max. REQUIRED."),
+    drum: z.string().optional().describe(`Drum voice. One of: ${DRUM_ABBRS.join(", ")}. REQUIRED.`),
+    hits: z.array(hitShape).optional().describe("The hits for this drum, one per step max. REQUIRED."),
   })
   .passthrough();
 
@@ -214,6 +216,21 @@ export function createDrummerServer(
     async (edits) => {
       const failed = guard() ?? requirePlaying();
       if (failed) return failed;
+      if (Object.values(edits).every((v) => v === undefined)) {
+        return err(
+          "No changes provided — pass the fields to change at the top level (tempoBpm, swing, bank, bars, resolution, " +
+            "voices, removeDrums), not wrapped in a groove object.",
+        );
+      }
+      const conflict = (edits.removeDrums ?? []).filter((d) =>
+        (edits.voices ?? []).some((v) => (v as { drum?: string }).drum === d),
+      );
+      if (conflict.length > 0) {
+        return err(
+          `Contradictory update: ${conflict.join(", ")} appears in both voices and removeDrums — to replace a drum's ` +
+            "hits, just include it in voices; to drop it, just list it in removeDrums.",
+        );
+      }
       const current = groove as Groove;
       const removed = new Set(edits.removeDrums ?? []);
       const replacements = new Map((edits.voices ?? []).map((v) => [(v as { drum: string }).drum, v]));
@@ -255,8 +272,12 @@ export function createDrummerServer(
         return err(`bpm must be between 40 and 300 (got: ${bpm})`);
       }
       // One cycle = one bar of 4/4 (D-11): cycles/sec = bpm / 60 / 4.
-      (sidecar as SidecarHandle).push({ type: "setCps", cps: bpm / 240 });
+      const live = sidecar as SidecarHandle;
+      live.push({ type: "setCps", cps: bpm / 240 });
       groove = { ...(groove as Groove), tempoBpm: bpm };
+      // Keep the replayed evaluate's setcpm in sync so a page that reloads
+      // comes back at the new tempo, not the one baked into the old code.
+      live.setLastEvaluate(compileGroove(groove));
       return ok(`Tempo is now ${bpm} BPM.`);
     },
   );
@@ -325,10 +346,12 @@ export function createDrummerServer(
       inputSchema: {},
     },
     async () => {
-      const failed = guard();
-      if (failed) return failed;
+      // Deliberately no page-connected guard: pushing hush with zero pages
+      // still clears the sidecar's replay state, so a page opened later stays
+      // silent instead of resurrecting the old groove.
+      if (isUnavailable(sidecar)) return err(sidecar.unavailableError);
       if (!playing) return ok("Already stopped.");
-      (sidecar as SidecarHandle).push({ type: "hush" });
+      sidecar.push({ type: "hush" });
       playing = false;
       return ok("Stopped.");
     },

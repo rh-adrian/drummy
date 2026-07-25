@@ -51,10 +51,14 @@ The pattern schema must include **per-hit velocity and micro-timing offsets**. T
 ## Status
 
 In development, spec-driven — see [specs/drummer-v1/SPEC.md](specs/drummer-v1/SPEC.md).
-M1 (groove schema + Strudel compiler) and M2 (websocket sidecar + Strudel page with
-bar-quantized hot-swaps + automated audio-verification harness) complete; next is M3,
-the MCP tool surface. Try it today without MCP: `npm run dev:jam`, open
-http://localhost:4747, click Start. Research background in [RESEARCH.md](RESEARCH.md).
+M1 (groove schema + compiler), M2 (websocket sidecar + Strudel page with bar-quantized
+hot-swaps + audio-verification harness), and M3 (the MCP tool surface: `play_groove`,
+`update_groove`, `set_tempo`, `set_kit`, `list_kits`, `stop`, `now_playing`) are complete —
+you can jam with it now: `npm install && npm run build`, register with
+`claude mcp add ai-drummer -- node <abs-path>/dist/index.js`, open http://localhost:4747
+when a session starts, click Start, and ask for a beat. Next is M4 (docs polish).
+No MCP client handy? `npm run dev:jam` plays a canned groove. Research background in
+[RESEARCH.md](RESEARCH.md).
 Future expansions (e.g., mouthed-bassline → bass MIDI) are parked in [IDEAS.md](IDEAS.md).
 
 ## License

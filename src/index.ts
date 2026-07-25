@@ -26,8 +26,12 @@ async function main(): Promise<void> {
   };
 
   // NFR-3: transport closed (MCP client exited) → tear down the sidecar; no
-  // orphaned ports or processes.
+  // orphaned ports or processes. The SDK's stdio transport never fires onclose
+  // on stdin EOF (it only listens for "data"), so watch stdin directly — that
+  // is the one signal that survives a SIGKILLed client.
   server.server.onclose = () => shutdown(0);
+  process.stdin.on("end", () => shutdown(0));
+  process.stdin.on("close", () => shutdown(0));
   process.on("SIGINT", () => shutdown(0));
   process.on("SIGTERM", () => shutdown(0));
 
