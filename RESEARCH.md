@@ -125,7 +125,28 @@ You (chat/voice)
 
 Decision gate: prototype on (1); go to (2) only if owning the engine proves worth it.
 
-## 6. Open questions
+## 6. Exploration addendum (2026-07-25, spec phase)
+
+Three-agent deep dive before writing `specs/drummer-v1/SPEC.md`. Full details there; headlines:
+
+- **Niche confirmed open** — no "drummer-vocabulary MCP" exists anywhere. ~25 Strudel MCP
+  projects surveyed; all substantial ones (live-coding-music-mcp 225★, dj-claude,
+  strudel-ai-dj) are AGPL-3.0 and architecturally different (Playwright over strudel.cc,
+  or ext-apps UI). **Decision: build fresh, borrow ideas** (named-slot stacks,
+  cycle-boundary swaps, stateful jam tools).
+- **Strudel is AGPL-3.0-or-later** (all `@strudel/*` npm packages + superdough).
+  tidal-drum-machines WAV licenses unverified. **Decision: runtime CDN loading**
+  (`@strudel/web@1.3.0` from unpkg, samples from strudel.b-cdn.net) — nothing bundled,
+  repo stays pure MIT; internet required at play time; offline = future milestone after
+  license verification.
+- **Pattern hot-swap confirmed viable:** Strudel re-evaluate preserves clock phase
+  (Cyclist just swaps the pattern reference) but applies at the next ~50 ms tick, not the
+  bar. Bar-boundary quantize is implemented client-side (delay to next cycle start).
+- **MCP stack:** `@modelcontextprotocol/sdk` ^1.29.0 (v2 beta), McpServer + registerTool
+  + zod, stdio; stdio+WS-sidecar is community precedent — pitfalls: never log to stdout,
+  handle port collision, close sidecar on transport close.
+
+## 7. Open questions
 
 - Voice input: out of scope initially? (Text chat first; voice is a front-end concern.)
 - Does Strudel's scheduling allow clean bar-boundary pattern swap from an external
