@@ -2,65 +2,162 @@
 
 An open-source AI drummer you can talk to and jam with.
 
-Say *"hey, give me a beat like Brick House"* and a groove starts playing. Say *"more hi-hat, busier fill at the end"* and it applies at the next bar.
+Say *"hey, give me a beat like Brick House"* and a groove starts playing through real
+TR-808 / LinnDrum / MPC60 samples in your browser. Say *"more hi-hat, make it swing"*
+and the change lands at the next bar boundary, click-free.
 
-## Concept
+There's no app and no UI to learn: it's an [MCP](https://modelcontextprotocol.io) server,
+so any MCP client — Claude Code, Claude Desktop — is the chat surface. The LLM authors
+the groove from its own song and music-theory knowledge; this server compiles it to
+[Strudel](https://strudel.cc) code and streams it to a local browser page that loops it.
 
-Frontier LLMs don't have note-perfect recall of song transcriptions, but they reliably know **groove-level** facts about nearly every song (Brick House ≈ 100 BPM funk, syncopated 16th hats, kick locked to the bass, ghost-noted snare on 2 and 4) — plus deep music theory. That's the same information a session drummer extracts from "play it like Brick House."
+## Quickstart (clone → jamming)
 
-So instead of neural audio generation (Magenta, Suno, etc.), this project uses a **symbolic** approach:
+Requirements: macOS or Linux, Node ≥ 20, a current Chrome/Safari, internet at play time
+(Strudel + samples load from CDNs), and an MCP client.
 
-1. **Free public drum captures** (real sampled hits from TR-808s, TR-909s, LinnDrums, acoustic kits)
-2. **A sequencer engine** that triggers those samples from pattern data on a loop
-3. **An MCP server** wrapping the engine in drummer-vocabulary tools (`set_groove`, `add_fill`, `swing_amount`, `halftime`, `set_kit`)
-4. **An LLM agent** that translates natural language ("like Brick House") → groove description → pattern
-
-Real-time responsiveness is not required. Changes hot-swap at the next bar boundary, which feels musically natural (~2–4s in practice).
-
-## Architecture (proposed)
-
-```
-You (chat/voice)
-   │
-   ▼
-LLM agent  ──  knows songs + music theory, speaks drummer language
-   │  MCP tools: set_groove / add_fill / set_tempo / set_kit / mutate ...
-   ▼
-MCP server
-   │  pattern JSON (per-hit velocity + micro-timing offsets)
-   ▼
-Sequencer engine  ──  loops pattern on a clock, bar-boundary hot-swap
-   │
-   ▼
-Sample library  ──  free/open-licensed drum captures
+```bash
+git clone https://github.com/rh-adrian/ai-drummer.git
+cd ai-drummer
+npm install
+npm run build
 ```
 
-Two candidate builds (see [RESEARCH.md](RESEARCH.md) for full analysis):
+Register with Claude Code (`-s user` makes it available in every session):
 
-| Path | Engine | Effort | Notes |
-|------|--------|--------|-------|
-| 1. Thin | [Strudel](https://strudel.cc) (browser TidalCycles) | Afternoon prototype | Samples + scheduling already solved; bundled open-licensed drum-machine captures |
-| 2. Self-contained | Own Node/Python looping sampler | Larger | Zero dependencies, fully-owned MCP schema |
+```bash
+claude mcp add -s user ai-drummer -- node "$PWD/dist/index.js"
+```
 
-Plan: prototype on path 1 to validate that LLM-written grooves feel good, then decide if the standalone engine is worth owning.
+For Claude Desktop or other MCP clients, copy [.mcp.json.example](.mcp.json.example)
+into your client's MCP config and fix the absolute path.
 
-## Key design principle
+Then jam:
 
-The pattern schema must include **per-hit velocity and micro-timing offsets**. That's the difference between a robotic grid and something that feels like Brick House. Ghost notes, swing, and push/drag are first-class citizens.
+1. Start a new session in your MCP client (the server starts with it).
+2. Open **http://localhost:4747** and click **▶ Start** — one click is required by
+   browser autoplay policy. Leave the tab open; it shows the current pattern, tempo,
+   kit, and connection status.
+3. Ask for a beat: *"give me a beat like Brick House"*, *"a dusty 90 BPM boom-bap
+   groove"*, *"four-on-the-floor house at 124"*.
+4. Iterate: *"busier hats"*, *"add ghost notes on the snare"*, *"halftime it"*,
+   *"try it on the 909"*, *"slow it down to 95"*.
 
-## Status
+No MCP client handy? `npm run dev:jam` plays a canned groove through the same page.
 
-In development, spec-driven — see [specs/drummer-v1/SPEC.md](specs/drummer-v1/SPEC.md).
-M1 (groove schema + compiler), M2 (websocket sidecar + Strudel page with bar-quantized
-hot-swaps + audio-verification harness), and M3 (the MCP tool surface: `play_groove`,
-`update_groove`, `set_tempo`, `set_kit`, `list_kits`, `stop`, `now_playing`) are complete —
-you can jam with it now: `npm install && npm run build`, register with
-`claude mcp add ai-drummer -- node <abs-path>/dist/index.js`, open http://localhost:4747
-when a session starts, click Start, and ask for a beat. Next is M4 (docs polish).
-No MCP client handy? `npm run dev:jam` plays a canned groove. Research background in
-[RESEARCH.md](RESEARCH.md).
-Future expansions (e.g., mouthed-bassline → bass MIDI) are parked in [IDEAS.md](IDEAS.md).
+## The tools (what the LLM drives)
 
-## License
+| Tool | What it does |
+|------|--------------|
+| `play_groove` | Start (or replace) the looping groove from a structured groove JSON |
+| `update_groove` | Partial edit of the playing groove — only the changed fields are sent |
+| `set_tempo` | Change BPM smoothly without restarting the loop or losing bar phase |
+| `set_kit` | Same pattern, different drum machine's samples |
+| `list_kits` | Available banks with sound descriptions + which drums each provides |
+| `stop` | Silence; a later `play_groove` starts fresh |
+| `now_playing` | Current state: groove, tempo, kit, playing/stopped, page connected |
 
-TBD (intended open source).
+The tool descriptions teach the model the drummer vocabulary (drum abbreviations,
+ghost-note velocity conventions, swing semantics, genre sketches), so any frontier
+model can drive it with no external docs.
+
+A groove is a bar grid — `resolution` steps per bar × `bars`, one voice per drum:
+
+```jsonc
+{
+  "tempoBpm": 100,
+  "swing": 0.12,          // 0–0.6, fraction of a step; delays every odd step
+  "bank": "RolandTR808",  // see list_kits
+  "bars": 1,              // 1–4
+  "resolution": 16,       // steps per bar: 8, 12, 16, 24, 32 (12/24 = triplet feels)
+  "voices": [
+    { "drum": "bd", "hits": [ { "step": 0 }, { "step": 7, "vel": 0.9 }, { "step": 10 } ] },
+    { "drum": "sd", "hits": [ { "step": 4 }, { "step": 12 },
+                              { "step": 6, "vel": 0.25 } ] },   // ghost note
+    { "drum": "hh", "hits": [ { "step": 0, "vel": 0.6 }, { "step": 2, "vel": 0.5 } /* … */ ] }
+  ]
+}
+```
+
+**Per-hit velocity and per-hit micro-timing (`micro`, push/drag) are first-class** —
+that's the difference between a robotic grid and something that feels like Brick House.
+
+## How it works
+
+```
+MCP client (Claude Code / Desktop) — the chat surface
+  → MCP server (stdio)            src/server/tools.ts   drummer-vocabulary tools
+    → groove schema + compiler    src/core/*            groove JSON → Strudel code
+    → HTTP+WS sidecar             src/server/sidecar.ts serves the page, pushes code
+      → browser page              page/                 @strudel/web via CDN, loops it
+```
+
+Everything runs in one process launched by your MCP client. The page connects back over
+a websocket, applies incoming patterns at the **next bar boundary** (Strudel's clock
+phase is preserved, so swaps are click-free and never lose their place), heartbeats its
+status, and auto-reconnects. Real-time control is a non-goal — a change landing at the
+top of the next bar (~2–4 s) is how you'd count a band in anyway.
+
+## Configuration
+
+| Env var | Default | Meaning |
+|---------|---------|---------|
+| `AI_DRUMMER_PORT` | `4747` | Port for the page + websocket sidecar |
+
+Set it in the MCP registration, e.g.
+`claude mcp add -s user ai-drummer -e AI_DRUMMER_PORT=5757 -- node "$PWD/dist/index.js"`.
+
+## Troubleshooting
+
+- **No sound** — you must click **▶ Start** on the page once per load (browser
+  autoplay policy). The tab must stay open; audio keeps playing in a background tab.
+- **"No drummer page is connected"** — the tool result already says it: open
+  http://localhost:4747 and click Start, then ask again.
+- **"port 4747 is already in use"** — another ai-drummer session (another Claude
+  window?) owns the port. One jam session per port: close the other session, or give
+  this one its own `AI_DRUMMER_PORT`.
+- **No internet** — playback needs it: the page loads `@strudel/web` from unpkg and
+  samples from Strudel's CDN at runtime (see Licensing). Offline mode would require
+  vendoring samples, which is blocked on license verification ([SAMPLES.md](SAMPLES.md)).
+- **First hit of a freshly-switched kit sounds clipped** — can happen once on very slow
+  connections while samples stream in; the next bar is fine.
+- **Page shows connected but tools say it isn't** — a tab left hidden *and stopped* for
+  5+ minutes gets its timers throttled by Chrome, which stalls the heartbeat. Focus or
+  reload the tab.
+
+## Development
+
+```bash
+npm test          # vitest — schema, compiler, sidecar, MCP tools (in-memory transport)
+npm run dev:jam   # sidecar + canned groove, no MCP client needed
+npm run e2e       # full stack: real stdio server + headless Chrome + audio assertions
+npm run capture   # DSP verification harness: onset grid, tempo, ghost/accent RMS, swing
+```
+
+`e2e` and `capture` drive a headless Chrome via Playwright — run
+`npx playwright install chromium` once first. They record the page's actual audio
+output to WAV and assert on it (onsets on the grid, measured tempo, ghost notes quieter
+than accents, bar-boundary swap continuity, post-stop silence): audio correctness is CI-checkable,
+not ear-checked. Development is spec-driven; [specs/drummer-v1/SPEC.md](specs/drummer-v1/SPEC.md)
+is the source of truth for requirements, decisions, and progress.
+
+Background reading: [RESEARCH.md](RESEARCH.md) (landscape analysis and why symbolic
+beats neural audio here), [IDEAS.md](IDEAS.md) (parked future expansions, e.g.
+mouthed-bassline → bass MIDI).
+
+## Licensing
+
+This repo is **MIT** — all code here is ours and freely licensed.
+
+Two things it deliberately does **not** contain:
+
+- **Strudel** (`@strudel/web`, AGPL-3.0-or-later) — loaded unmodified from unpkg by
+  *your browser* at page runtime. It is not bundled, linked, imported, or redistributed
+  by this project; the server only ever emits Strudel *source code as text*. AGPL
+  obligations attach to Strudel itself (which is already open), not to this repo.
+- **Drum samples** (tidal-drum-machines) — streamed from Strudel's CDN by the browser.
+  The individual WAV licenses are unverified upstream, so they stay out of the repo
+  entirely. Sources and license status are tracked in [SAMPLES.md](SAMPLES.md).
+
+The trade-off is deliberate: internet required at play time, in exchange for a repo
+that is pure MIT with zero license ambiguity.

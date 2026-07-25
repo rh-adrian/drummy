@@ -154,3 +154,30 @@ Three-agent deep dive before writing `specs/drummer-v1/SPEC.md`. Full details th
 - Groove *feel* evaluation: how do we judge "does this feel like Brick House"?
   Consider a small human-rated test set of 10 famous grooves.
 - MIDI out (drive external synths/DAW) as a stretch goal.
+
+## 8. Outcome: v1 built (2026-07-25)
+
+The thin path (§5, candidate 1) was validated the same day — not on top of an existing
+Strudel MCP (all AGPL, wrong shape; see §6) but as a fresh MIT-licensed
+drummer-vocabulary MCP server pushing compiled Strudel code to a local page. The core
+bet held: a frontier model given only the tool descriptions authored a convincing
+Brick-House-style groove (syncopated kick, ghost-noted backbeat, 16th hats) on its
+first attempt, unprompted, and iterated on it musically.
+
+§7's open questions, resolved:
+
+- **Voice input** — confirmed out of scope for v1 (SPEC D-5); arrives free via MCP
+  clients / OS dictation later.
+- **Bar-boundary swap** — yes, cleanly, but not for free: Strudel's re-evaluate
+  preserves clock phase yet applies at the next ~50 ms tick, so the page quantizes
+  swaps to the bar itself, firing 300 ms *early* because the scheduler queues ahead
+  (SPEC D-10 + M2 log). Measured: swap downbeat within 5 ms of the bar line.
+- **Groove feel evaluation** — solved without humans in the loop (SPEC D-13): a
+  Playwright harness records the page's real audio to WAV, DSP assertions check
+  onsets/tempo/ghost-vs-accent/swing/seams, and Gemini (native audio understanding)
+  judges feel. The human-rated 10-groove test set was never needed.
+- **MIDI out** — still a stretch goal; parked alongside other expansions in IDEAS.md.
+
+Decision gate from §5: the standalone engine (candidate 2) was **not** needed — Strudel
+loaded at page runtime left nothing to own except the schema and compiler, which we own
+anyway. Full requirements, decisions, and milestone log: `specs/drummer-v1/SPEC.md`.

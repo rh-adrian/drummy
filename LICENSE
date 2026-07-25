@@ -24,4 +24,5 @@ SOFTWARE.
 
 Note: at runtime the browser page loads Strudel (https://strudel.cc, AGPL-3.0-or-later)
 unmodified from a CDN, and drum samples from Strudel's CDN. Neither is bundled with,
-linked into, or redistributed by this project. See SPEC decision D-7 and RESEARCH.md §6.
+linked into, or redistributed by this project. See SAMPLES.md, SPEC decision D-7, and
+RESEARCH.md §6.
