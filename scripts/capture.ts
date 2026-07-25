@@ -25,9 +25,9 @@ const CAPTURE_DIR = "captures";
 // Deliberately NOT 120: the page's cps-introspection fallback is 0.5 cps
 // (120 BPM), so a 120 BPM run can't tell real introspection from the fallback.
 const BPM = 96;
-const STEP_MS = (60_000 / BPM) * (4 / 16); // 125 ms per 16th at 120 BPM
-const BAR_MS = STEP_MS * 16; // 2000 ms
-const SWING = 0.3; // fraction of a step (D-14) → 37.5 ms late on odd steps
+const STEP_MS = (60_000 / BPM) * (4 / 16); // 156.25 ms per 16th at 96 BPM
+const BAR_MS = STEP_MS * 16; // 2500 ms
+const SWING = 0.3; // fraction of a step (D-14) → 46.9 ms late on odd steps
 
 function compile(g: unknown): string {
   const parsed = parseGroove(g);
@@ -251,7 +251,7 @@ function analyze(pcm: Float32Array, sampleRate: number) {
     `closest early hat ${downbeat.toFixed(1)}ms from bar line (first 6: ${distToBar.map((d) => d.toFixed(0)).join(",")})`,
   );
 
-  // --- swing: 16th hats with swing 0.3 → IOIs alternate 162.5 / 87.5 ms.
+  // --- swing: 16th hats with swing 0.3 → IOIs alternate 203.1 / 109.4 ms.
   const bIoi = bOnsets.slice(1).map((t, i) => t - bOnsets[i]);
   const evenIoi = bIoi.filter((_, i) => i % 2 === 0);
   const oddIoi = bIoi.filter((_, i) => i % 2 === 1);

@@ -15,6 +15,7 @@ const state = {
   bank: null,
   tempo: null,
   pendingSwap: null,
+  pendingCps: null, // setCps received before initStrudel resolved
 };
 
 // initStrudel registers evaluate/hush/etc. as globals and starts prebaking the
@@ -28,6 +29,14 @@ Promise.resolve(
 ).then(
   (r) => {
     repl = r;
+    // A setCps may also have arrived before init resolved. If an evaluate is
+    // queued it carries a stale setcpm, so the pending cps must be applied
+    // AFTER that evaluate runs (applyEvaluate handles it); with nothing queued
+    // apply it now.
+    if (state.pendingCps !== null && !state.queued) {
+      repl.setCps(state.pendingCps);
+      state.pendingCps = null;
+    }
     flushQueued(); // an evaluate may have arrived after arm but before init resolved
   },
   (err) => console.error("initStrudel failed:", err),
@@ -90,6 +99,12 @@ function applyEvaluate(code) {
     state.playing = true;
     state.code = code;
     state.tempo = code.match(/setcpm\(([\d.]+)\/4\)/)?.[1] ?? state.tempo;
+    if (state.pendingCps !== null) {
+      // a setCps arrived while repl was null; it postdates this code's setcpm
+      repl.setCps(state.pendingCps);
+      state.tempo = String(Math.round(state.pendingCps * 240));
+      state.pendingCps = null;
+    }
     state.bank = bank ?? state.bank;
     render();
     sendStatus();
@@ -109,6 +124,7 @@ function flushQueued() {
 function applyHush() {
   clearTimeout(state.pendingSwap);
   state.queued = null;
+  state.pendingCps = null;
   repl?.stop();
   state.playing = false;
   render();
@@ -131,6 +147,10 @@ async function warmBank(bank) {
       .map(([, files]) => base + (Array.isArray(files) ? files[0] : files));
     await Promise.allSettled(urls.map((u) => fetch(u, { mode: "cors" })));
   } catch (err) {
+    // allow a retry on the next push — a transient failure must not disable
+    // pre-warm for this bank (or, via a cached rejected map promise, all banks)
+    warmedBanks.delete(bank);
+    sampleMapPromise = null;
     console.warn("sample pre-warm failed (playback will lazy-load):", err);
   }
 }
@@ -154,7 +174,8 @@ function connect() {
     if (msg.type === "evaluate") applyEvaluate(msg.code);
     else if (msg.type === "hush") applyHush();
     else if (msg.type === "setCps" && Number.isFinite(msg.cps) && msg.cps > 0) {
-      repl?.setCps(msg.cps);
+      if (repl) repl.setCps(msg.cps);
+      else state.pendingCps = msg.cps; // applied once initStrudel resolves
       state.tempo = String(Math.round(msg.cps * 240)); // one cycle = one bar of 4/4
       render();
     }

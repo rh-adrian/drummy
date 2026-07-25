@@ -13,7 +13,8 @@ the groove from its own song and music-theory knowledge; this server compiles it
 
 ## Quickstart (clone → jamming)
 
-Requirements: macOS or Linux, Node ≥ 20, a current Chrome/Safari, internet at play time
+Requirements: macOS (Linux likely works but is untested), Node ≥ 20, a current
+Chrome/Safari, internet at play time
 (Strudel + samples load from CDNs), and an MCP client.
 
 ```bash
