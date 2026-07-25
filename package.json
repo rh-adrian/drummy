@@ -1,7 +1,7 @@
 {
   "name": "ai-drummer",
   "version": "0.1.0",
-  "description": "An open-source AI drummer you can talk to and jam with — drummer-vocabulary MCP server driving Strudel drum-machine samples",
+  "description": "An open-source AI drummer you can talk to and jam with \u2014 drummer-vocabulary MCP server driving Strudel drum-machine samples",
   "type": "module",
   "license": "MIT",
   "author": "Adrian Campos",
@@ -19,16 +19,22 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "dev:jam": "tsx scripts/dev-jam.ts",
+    "capture": "tsx scripts/capture.ts"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "ws": "^8.21.1",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "playwright": "^1.62.0",
+    "tsx": "^4.23.1",
     "typescript": "^5.6.0",
     "vitest": "^4.0.0"
   }
