@@ -1,11 +1,11 @@
 # AI Drummer v1 — Spec
 
-Status: draft
-Branch: feat/drummer-v1
+Status: approved
+Branch: main (user directive 2026-07-25: no feature branches — commit and push straight to main)
 
 ## Context Restore
 
-Spec drafted 2026-07-25, awaiting user sign-off (Phase 5). No implementation code exists yet — repo contains only docs (README.md, RESEARCH.md, CLAUDE.md) and this spec. Research phase complete: three exploration reports (Strudel embedding API, existing MCP landscape, MCP TS SDK practices) are summarized in RESEARCH.md §7. Next step after approval: M1 (groove schema + compiler). Key paths: none yet; planned layout in Architecture section.
+Spec approved 2026-07-25 (user: "go ahead and push... for all of this"). No implementation code exists yet — repo contains only docs (README.md, RESEARCH.md, CLAUDE.md) and this spec. Research summarized in RESEARCH.md §6–7. Next step: M1 (groove schema + compiler), TDD. All work happens on `main`, pushed to github.com/rh-adrian/ai-drummer. Audio is verified WITHOUT human listening per D-13 (headless capture → DSP assertions → Gemini-on-VPS listener → WAVs sent to user as artifacts); user currently cannot use audio, never block on their ear-check. VPS access for Gemini: `vps` zsh function (tailscale ssh).
 
 ## Overview
 
@@ -61,6 +61,8 @@ An open-source conversational AI drummer. The user talks to an LLM in any MCP cl
 - D-9: TypeScript, `@modelcontextprotocol/sdk` ^1.29.0 (v2 still beta), `McpServer`+`registerTool`+zod, stdio transport, plain `tsc` build, vitest — exploration (matches official reference servers) — 2026-07-25.
 - D-10: Bar-boundary quantization implemented client-side in the page: Strudel's re-evaluate preserves clock phase but swaps at next ~50 ms tick, so the page computes time-to-next-cycle from scheduler state and delays `setPattern` — exploration, 2026-07-25.
 - D-11: One Strudel cycle = one bar; tempo expressed as BPM in 4/4 via `setcpm(bpm/4)` — assumption (standard Strudel practice), 2026-07-25.
+- D-12: Trunk-based workflow — commit and push straight to `main`; no feature branches or PRs for this project — user, 2026-07-25.
+- D-13: Audio verification is automated, never dependent on human listening — user (can't use audio in current environment), 2026-07-25. Three layers: (1) Playwright headless-Chrome capture harness records page output to WAV via MediaStreamAudioDestinationNode + MediaRecorder; Node-side DSP assertions on onsets vs step grid, tempo from inter-onset intervals, ghost-vs-accent RMS ratio, measured swing, loop-seam continuity, post-stop silence. (2) Subjective listener: WAVs sent to the VPS where Gemini (native audio understanding) judges groove feel and artifacts. (3) WAV artifacts delivered to the user at checkpoints for eventual ear-check — non-blocking.
 - A-1: Single simultaneous jam session per server instance (per MCP client session) is acceptable.
 - A-2: The LLM authors grooves from its own song/theory knowledge; the server never resolves song names (also keeps us clear of copyright questions).
 
@@ -112,16 +114,16 @@ Dependency order (deepest → outermost): core schema/compiler (pure, no I/O) �
 - **Tasks:** scaffold TS project per D-9; define zod groove schema with validation messages written for LLM self-correction; implement compiler emitting Strudel code (voices → `stack()` of `s(...)` patterns with `.bank()`, per-hit velocity via gain, micro-timing via per-hit offset, swing applied to off-16ths, `setcpm(bpm/4)`); curated kit list with human descriptions ("RolandTR808 — boomy hip-hop/electro").
 - **Acceptance criteria:** satisfies FR-7 (schema+compiler side), groundwork for FR-1/FR-4; NFR-4 (LICENSE), NFR-6.
 - **Test plan (write first):** `groove.schema.test.ts` — valid groove passes; bad drum name / step ≥ bars×resolution / vel>1 fail with actionable messages. `compile.test.ts` — kick-on-quarters compiles to expected pattern; ghost note yields lower gain than accent; swing≠0 shifts off-beat 16ths; micro offset appears; bank name appears; triplet resolution (12) compiles; deterministic output (same input → same string).
-- **Verification:** `npm test` green; `npm run build` clean; manually paste one compiled string into strudel.cc REPL and confirm it plays and sounds like the intended groove.
+- **Verification:** `npm test` green; `npm run build` clean. Audible correctness of compiled output is verified in M2 via the capture harness (D-13) — M1 asserts on the compiled code string only.
 - **Isolation note:** pure library, nothing consumes it yet; repo remains docs-only for any other reader.
 - **Status:** pending
 
 ### M2: Sidecar server + Strudel page
-- **Scope:** `src/server/sidecar.ts`, `page/`, `scripts/dev-jam.ts` (pushes a hardcoded compiled groove without MCP), `test/server/sidecar.test.ts`.
+- **Scope:** `src/server/sidecar.ts`, `page/`, `scripts/dev-jam.ts` (pushes a hardcoded compiled groove without MCP), `scripts/capture.ts` (D-13 harness: Playwright headless Chrome → MediaRecorder WAV → onset/RMS/swing analysis), `test/server/sidecar.test.ts`.
 - **Tasks:** HTTP server (static page + WS upgrade) on configurable port (default 4747, `AI_DRUMMER_PORT` override) with EADDRINUSE → clear error; WS protocol `{type: evaluate|hush|setCps, code?, cps?}` + page→server `{type: status}` heartbeat; page loads `@strudel/web@1.3.0` from unpkg, `initStrudel` with tidal-drum-machines prebake from Strudel CDN, click-to-arm overlay, **bar-boundary quantize** (delay incoming evaluate to next cycle start per D-10), auto-reconnect, current code/tempo/connection display, sample pre-warm on bank change.
 - **Acceptance criteria:** satisfies FR-8; FR-2 mechanism (quantize) proven; NFR-1, NFR-3 (shutdown + port error), NFR-5.
 - **Test plan (write first):** sidecar unit/integration — serves page HTML; accepts WS and delivers evaluate payloads (mock client); port-in-use path returns typed error; `close()` frees port and terminates WS clients. Page quantize helper (pure function extracted): given cycle position + cps, computes correct delay — unit-tested in vitest. Browser behaviors (autoplay arm, real audio) — manual checklist, scripted via `dev-jam.ts`.
-- **Verification:** `npm test`; run `npm run dev:jam`, open page, click arm, hear the TR-808 groove loop; push a changed groove from the script mid-playback and confirm click-free bar-boundary swap; kill script and confirm port released.
+- **Verification:** `npm test`; run the D-13 capture harness against `dev:jam`: assert onsets match the groove grid at the right tempo, ghost RMS < accent RMS, mid-playback groove swap lands on a bar boundary with no discontinuity at the seam, `hush` → silence; send the captured WAVs to the VPS for a Gemini listen (groove feel, clicks/artifacts) and deliver them to the user as checkpoint artifacts (non-blocking); kill script and confirm port released.
 - **Isolation note:** standalone dev script is the only consumer; no MCP surface exists yet; M1 API unchanged.
 - **Status:** pending
 
@@ -130,7 +132,7 @@ Dependency order (deepest → outermost): core schema/compiler (pure, no I/O) �
 - **Tasks:** `McpServer` with tools `play_groove`, `update_groove`, `set_tempo`, `set_kit`, `list_kits`, `stop`, `now_playing`; in-process session state (current groove/tempo/kit/page-connected); tool handlers validate via M1 schema, compile, push via M2 sidecar; `isError` results per FR-9 (incl. "page not open — open http://localhost:4747 and click Start"); tool descriptions per FR-10 (drummer vocabulary, ghost-note velocity conventions, genre feel hints); annotations (`readOnlyHint` on `list_kits`/`now_playing`); stderr-only logging audit; transport-close → sidecar shutdown.
 - **Acceptance criteria:** satisfies FR-1..6, FR-9, FR-10; NFR-2, NFR-3 end-to-end.
 - **Test plan (write first):** in-memory-transport integration tests — each tool happy path mutates state and emits expected WS payload (mock sidecar); `play_groove` with invalid groove → `isError` + actionable message; tools with no page connected → `isError` naming the URL; `now_playing` reflects prior calls; `stop` then `play_groove` restarts clean. Static test: grep-level check that no source file calls `console.log`.
-- **Verification:** `npm test`; register locally (`claude mcp add ai-drummer -- node <abs>/dist/index.js`); in a fresh Claude Code session say "give me a beat like Brick House, then make the hats busier" and confirm: beat plays ≤ 15 s, follow-up applies at a bar boundary ≤ 5 s, `now_playing` accurate; two-session port-collision message verified manually.
+- **Verification:** `npm test`; register locally (`claude mcp add ai-drummer -- node <abs>/dist/index.js`); in a fresh Claude Code session say "give me a beat like Brick House, then make the hats busier" while the capture harness records the page: confirm via analysis + Gemini listen (D-13) that a funk-feel groove is playing ≤ 15 s after the ask and the hat change lands on a bar boundary ≤ 5 s after the follow-up; `now_playing` accurate; WAVs delivered to user; two-session port-collision message verified.
 - **Isolation note:** consumes M1/M2 through their existing APIs; nothing external depends on the MCP surface until registered by the user.
 - **Status:** pending
 
