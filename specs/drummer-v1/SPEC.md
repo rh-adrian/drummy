@@ -5,7 +5,7 @@ Branch: main (user directive 2026-07-25: no feature branches — commit and push
 
 ## Context Restore
 
-Spec approved 2026-07-25 (user: "go ahead and push... for all of this"). No implementation code exists yet — repo contains only docs (README.md, RESEARCH.md, CLAUDE.md) and this spec. Research summarized in RESEARCH.md §6–7. Next step: M1 (groove schema + compiler), TDD. All work happens on `main`, pushed to github.com/rh-adrian/ai-drummer. Audio is verified WITHOUT human listening per D-13 (headless capture → DSP assertions → Gemini-on-VPS listener → WAVs sent to user as artifacts); user currently cannot use audio, never block on their ear-check. VPS access for Gemini: `vps` zsh function (tailscale ssh).
+M1 complete 2026-07-25: TS project scaffolded (tsc build, vitest, MIT LICENSE with AGPL runtime note); `src/core/groove.ts` (zod schema, `parseGroove` returning `{ok}|{error}` with LLM-actionable messages), `src/core/compile.ts` (`compileGroove` → Strudel code: aligned `.gain()` grids, swing+micro as per-delay-group `.late()/.early()` emitted as `d/(bars*res)` so pre-`.slow()` stretching lands exactly d real steps — see comment in compile.ts), `src/core/kits.ts` (BANKS/DRUMS). 28 tests green. **Next: M2** (sidecar + page + capture harness). Work on `main`, push after each milestone (D-12). Audio verified WITHOUT human listening per D-13 (headless capture → DSP assertions → Gemini on VPS via `vps` tailscale ssh → WAVs to user, non-blocking; user cannot use audio).
 
 ## Overview
 
@@ -116,7 +116,7 @@ Dependency order (deepest → outermost): core schema/compiler (pure, no I/O) �
 - **Test plan (write first):** `groove.schema.test.ts` — valid groove passes; bad drum name / step ≥ bars×resolution / vel>1 fail with actionable messages. `compile.test.ts` — kick-on-quarters compiles to expected pattern; ghost note yields lower gain than accent; swing≠0 shifts off-beat 16ths; micro offset appears; bank name appears; triplet resolution (12) compiles; deterministic output (same input → same string).
 - **Verification:** `npm test` green; `npm run build` clean. Audible correctness of compiled output is verified in M2 via the capture harness (D-13) — M1 asserts on the compiled code string only.
 - **Isolation note:** pure library, nothing consumes it yet; repo remains docs-only for any other reader.
-- **Status:** pending
+- **Status:** done (2026-07-25, see Progress Log)
 
 ### M2: Sidecar server + Strudel page
 - **Scope:** `src/server/sidecar.ts`, `page/`, `scripts/dev-jam.ts` (pushes a hardcoded compiled groove without MCP), `scripts/capture.ts` (D-13 harness: Playwright headless Chrome → MediaRecorder WAV → onset/RMS/swing analysis), `test/server/sidecar.test.ts`.
@@ -155,3 +155,5 @@ Dependency order (deepest → outermost): core schema/compiler (pure, no I/O) �
 ## Progress Log
 
 - 2026-07-25 — Spec drafted from intake (2 AskUserQuestion rounds) + 3-agent exploration (Strudel embedding, MCP landscape, MCP TS SDK). Key exploration facts folded into decisions D-8..D-11. Awaiting sign-off.
+- 2026-07-25 — Approved. D-12 (straight-to-main) and D-13 (automated audio verification: capture harness + DSP asserts + Gemini listener on VPS) added; M1/M2/M3 verification steps rewritten to remove human-listening dependencies.
+- 2026-07-25 — **M1 done.** TDD red→green, 28 tests. Deviations: none from plan. Discoveries worth keeping: (1) `.late()` before `.slow(bars)` is stretched by the slow factor, so delays are emitted as `d/(bars*resolution)` — documented in compile.ts header; (2) zod default() on hit.vel/micro means compiler can assume both always present; (3) per-hit micro/swing forces splitting voices into delay-groups (one stack entry per distinct delay) since mini-notation can't shift individual events — deterministic ordering by ascending delay keeps output stable for tests.

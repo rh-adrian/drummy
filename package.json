@@ -1,0 +1,35 @@
+{
+  "name": "ai-drummer",
+  "version": "0.1.0",
+  "description": "An open-source AI drummer you can talk to and jam with — drummer-vocabulary MCP server driving Strudel drum-machine samples",
+  "type": "module",
+  "license": "MIT",
+  "author": "Adrian Campos",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rh-adrian/ai-drummer.git"
+  },
+  "bin": {
+    "ai-drummer": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "page"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.0.0"
+  }
+}
