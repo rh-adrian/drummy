@@ -71,11 +71,36 @@ describe("compileGroove", () => {
     expect(lates.length).toBeGreaterThan(0);
     // swing of 0.2 steps at resolution 16 = 0.2/16 cycles = 0.0125
     expect(lates.some((l) => Math.abs(eval(l) - 0.2 / 16) < 1e-9)).toBe(true);
-    // hits on even steps must not carry the swing delay
+    // odd steps carry the swing delay, even steps do not
     const swungVoice = code.split("\n").find((l) => l.includes(".late("));
     const straightVoice = code.split("\n").find((l) => l.includes('s("') && !l.includes(".late("));
     expect(swungVoice).toBeDefined();
     expect(straightVoice).toBeDefined();
+    const swungSteps = swungVoice!.match(/s\("([^"]+)"\)/)![1].split(" ");
+    const straightSteps = straightVoice!.match(/s\("([^"]+)"\)/)![1].split(" ");
+    expect(swungSteps[1]).toBe("hh");
+    expect(swungSteps[3]).toBe("hh");
+    expect(swungSteps[0]).toBe("~");
+    expect(swungSteps[2]).toBe("~");
+    expect(straightSteps[0]).toBe("hh");
+    expect(straightSteps[2]).toBe("hh");
+    expect(straightSteps[1]).toBe("~");
+    expect(straightSteps[3]).toBe("~");
+  });
+
+  it("emits multi-bar delays as d/(bars*resolution) so slow() stretching lands d real steps", () => {
+    const code = compileGroove(
+      groove({
+        tempoBpm: 100,
+        swing: 0.2,
+        bank: "RolandTR808",
+        bars: 2,
+        voices: [{ drum: "hh", hits: [{ step: 1 }, { step: 17 }] }],
+      }),
+    );
+    expect(code).toContain(".slow(2)");
+    expect(code).toContain(".late(0.2/32)");
+    expect(code).not.toContain("/16)");
   });
 
   it("applies per-hit micro offsets as late()/early()", () => {

@@ -63,6 +63,7 @@ An open-source conversational AI drummer. The user talks to an LLM in any MCP cl
 - D-11: One Strudel cycle = one bar; tempo expressed as BPM in 4/4 via `setcpm(bpm/4)` — assumption (standard Strudel practice), 2026-07-25.
 - D-12: Trunk-based workflow — commit and push straight to `main`; no feature branches or PRs for this project — user, 2026-07-25.
 - D-13: Audio verification is automated, never dependent on human listening — user (can't use audio in current environment), 2026-07-25. Three layers: (1) Playwright headless-Chrome capture harness records page output to WAV via MediaStreamAudioDestinationNode + MediaRecorder; Node-side DSP assertions on onsets vs step grid, tempo from inter-onset intervals, ghost-vs-accent RMS ratio, measured swing, loop-seam continuity, post-stop silence. (2) Subjective listener: WAVs sent to the VPS where Gemini (native audio understanding) judges groove feel and artifacts. (3) WAV artifacts delivered to the user at checkpoints for eventual ear-check — non-blocking.
+- D-14: Swing semantics = fraction of a step (not of a 16th), delaying odd-numbered steps: classic 16th swing at resolution 16, 8th swing at resolution 8. Resolutions 8 and 32 allowed beyond the spec's original 12/16/24. M3 tool descriptions must tell the LLM to use resolution 16 for classic swung feels — M1 review finding, 2026-07-25.
 - A-1: Single simultaneous jam session per server instance (per MCP client session) is acceptable.
 - A-2: The LLM authors grooves from its own song/theory knowledge; the server never resolves song names (also keeps us clear of copyright questions).
 
@@ -94,7 +95,7 @@ Groove schema (shape; exact zod in M1):
 ```jsonc
 {
   "tempoBpm": 100,
-  "swing": 0.12,            // 0..~0.6, fraction of a 16th
+  "swing": 0.12,            // 0..0.6, fraction of a STEP, delays odd steps (D-14)
   "bank": "RolandTR808",
   "bars": 1,                // 1–4 bar loop
   "resolution": 16,         // steps per bar (16ths); 12/24 for triplet feels
@@ -156,4 +157,5 @@ Dependency order (deepest → outermost): core schema/compiler (pure, no I/O) �
 
 - 2026-07-25 — Spec drafted from intake (2 AskUserQuestion rounds) + 3-agent exploration (Strudel embedding, MCP landscape, MCP TS SDK). Key exploration facts folded into decisions D-8..D-11. Awaiting sign-off.
 - 2026-07-25 — Approved. D-12 (straight-to-main) and D-13 (automated audio verification: capture harness + DSP asserts + Gemini listener on VPS) added; M1/M2/M3 verification steps rewritten to remove human-listening dependencies.
+- 2026-07-25 — M1 staff review: no blockers; timing math independently confirmed. Fixed: duplicate-step-per-voice now rejected (flam guidance in message), missing bank/drum errors now list valid values, swing test strengthened to assert which steps swing, multi-bar delay regression test added (`.late(0.2/32)` under `.slow(2)`). Deviations recorded as D-14. Deferred (noted for later milestones): per-bank drum availability check (M2 harness/M3 `list_kits`), `bin` points at dist/index.js which exists only from M3.
 - 2026-07-25 — **M1 done.** TDD red→green, 28 tests. Deviations: none from plan. Discoveries worth keeping: (1) `.late()` before `.slow(bars)` is stretched by the slow factor, so delays are emitted as `d/(bars*resolution)` — documented in compile.ts header; (2) zod default() on hit.vel/micro means compiler can assume both always present; (3) per-hit micro/swing forces splitting voices into delay-groups (one stack entry per distinct delay) since mini-notation can't shift individual events — deterministic ordering by ascending delay keeps output stable for tests.

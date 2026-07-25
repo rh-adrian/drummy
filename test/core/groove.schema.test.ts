@@ -128,6 +128,24 @@ describe("parseGroove", () => {
     expect(result.error).toMatch(/duplicate/i);
   });
 
+  it("rejects multiple hits on the same step within a voice", () => {
+    const result = parseGroove({
+      ...validGroove,
+      voices: [{ drum: "bd", hits: [{ step: 0, vel: 1 }, { step: 0, vel: 0.3 }] }],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("step 0");
+    expect(result.error).toMatch(/flam/i);
+  });
+
+  it("names valid banks when bank is missing entirely", () => {
+    const result = parseGroove({ tempoBpm: 100, voices: [{ drum: "bd", hits: [{ step: 0 }] }] });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("RolandTR808");
+  });
+
   it("rejects tempo outside 40-300 bpm", () => {
     expect(parseGroove({ ...validGroove, tempoBpm: 20 }).ok).toBe(false);
     expect(parseGroove({ ...validGroove, tempoBpm: 400 }).ok).toBe(false);

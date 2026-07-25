@@ -19,9 +19,11 @@ const hitSchema = z.object({
 });
 
 const voiceSchema = z.object({
-  drum: z.string().refine((d) => DRUM_ABBRS.includes(d), {
-    message: `unknown drum — valid drums are: ${DRUM_ABBRS.join(", ")}`,
-  }),
+  drum: z
+    .string({ required_error: `drum is required — valid drums are: ${DRUM_ABBRS.join(", ")}` })
+    .refine((d) => DRUM_ABBRS.includes(d), {
+      message: `unknown drum — valid drums are: ${DRUM_ABBRS.join(", ")}`,
+    }),
   hits: z.array(hitSchema).min(1, { message: "a voice needs at least one hit" }),
 });
 
@@ -35,9 +37,11 @@ const grooveSchema = z.object({
     .min(0, { message: "swing must be between 0 and 0.6 (fraction of a step to delay off-steps)" })
     .max(0.6, { message: "swing must be between 0 and 0.6 (fraction of a step to delay off-steps)" })
     .default(0),
-  bank: z.string().refine((b) => BANK_NAMES.includes(b), {
-    message: `unknown bank — valid banks are: ${BANK_NAMES.join(", ")}`,
-  }),
+  bank: z
+    .string({ required_error: `bank is required — valid banks are: ${BANK_NAMES.join(", ")}` })
+    .refine((b) => BANK_NAMES.includes(b), {
+      message: `unknown bank — valid banks are: ${BANK_NAMES.join(", ")}`,
+    }),
   bars: z.number().int().min(1).max(4).default(1),
   resolution: z
     .union([z.literal(8), z.literal(12), z.literal(16), z.literal(24), z.literal(32)], {
@@ -89,6 +93,17 @@ export function parseGroove(input: unknown): ParseResult {
       };
     }
     seen.add(voice.drum);
+
+    const steps = new Set<number>();
+    for (const hit of voice.hits) {
+      if (steps.has(hit.step)) {
+        return {
+          ok: false,
+          error: `voice "${voice.drum}" has multiple hits on step ${hit.step} — keep one hit per step (for a flam, put the grace note on a neighboring step with a micro offset)`,
+        };
+      }
+      steps.add(hit.step);
+    }
   }
 
   return { ok: true, groove };
