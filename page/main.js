@@ -18,13 +18,16 @@ const state = {
   bank: null,
   tempo: null,
   pendingSwap: null,
-  pendingCps: null, // setCps received before initStrudel resolved
-  // Last cps that postdates state.code's baked-in setcpm — the local play
-  // button must re-apply it after re-evaluating, or a pause/play after a
-  // set_tempo would silently revert the audible tempo (the same staleness the
-  // server's setLastEvaluate guards reloading pages against).
+  // Latest cps received, with the WS receipt sequence it arrived at. An
+  // evaluate only supersedes it if the evaluate was RECEIVED later — an older
+  // evaluate can APPLY later (bar-boundary delay) and must not clobber a newer
+  // tempo with its baked-in setcpm. Also re-applied by the local play button.
   lastCps: null,
+  lastCpsSeq: 0,
 };
+
+// Receipt-order counter for WS instructions (see lastCps above).
+let msgSeq = 0;
 
 // initStrudel registers evaluate/hush/etc. as globals and starts prebaking the
 // drum-machine sample map immediately (network warm-up before the user arms).
@@ -37,13 +40,10 @@ Promise.resolve(
 ).then(
   (r) => {
     repl = r;
-    // A setCps may also have arrived before init resolved. If an evaluate is
-    // queued it carries a stale setcpm, so the pending cps must be applied
-    // AFTER that evaluate runs (applyEvaluate handles it); with nothing queued
-    // apply it now.
-    if (state.pendingCps !== null && !state.queued) {
-      repl.setCps(state.pendingCps);
-      state.pendingCps = null;
+    // A setCps may have arrived before init resolved. If an evaluate is queued
+    // the swap callback decides by receipt order; with nothing queued apply now.
+    if (state.lastCps !== null && !state.queued) {
+      repl.setCps(state.lastCps);
     }
     flushQueued(); // an evaluate may have arrived after arm but before init resolved
   },
@@ -79,14 +79,14 @@ function schedulerCps() {
 // the lead window, we take the following bar line instead.
 const SWAP_LEAD_MS = 300;
 
-function applyEvaluate(code, groove = null) {
+function applyEvaluate(code, groove = null, seq = ++msgSeq) {
   // Warm the bank's samples immediately — by swap time (up to a bar away) the
   // fetches have had time to land, so the new kit's first hits don't drop.
   const bank = code.match(/\.bank\("(\w+)"\)/)?.[1] ?? null;
   if (bank) warmBank(bank);
 
   if (!state.armed || !repl) {
-    state.queued = { code, groove };
+    state.queued = { code, groove, seq };
     render();
     return;
   }
@@ -110,15 +110,15 @@ function applyEvaluate(code, groove = null) {
     state.paused = false; // a fresh push implies intent to hear it (D-18)
     state.code = code;
     state.groove = groove; // grid swaps in the same beat as the audio (FR-2)
-    state.lastCps = null; // this code's setcpm is authoritative again
     state.tempo = code.match(/setcpm\(([\d.]+)\/4\)/)?.[1] ?? state.tempo;
-    if (state.pendingCps !== null) {
-      // a setCps arrived while repl was null; it postdates this code's setcpm
-      const cps = state.pendingCps;
+    if (state.lastCps !== null && state.lastCpsSeq > seq) {
+      // a setCps received AFTER this code postdates its setcpm — re-apply it
+      // once the (async) evaluate lands, or the setcpm clobbers the tempo
+      const cps = state.lastCps;
       evalDone.then(() => repl.setCps(cps));
       state.tempo = String(Math.round(cps * 240));
-      state.lastCps = cps;
-      state.pendingCps = null;
+    } else {
+      state.lastCps = null; // this code's setcpm supersedes any older setCps
     }
     state.bank = bank ?? state.bank;
     render();
@@ -128,18 +128,19 @@ function applyEvaluate(code, groove = null) {
 
 function flushQueued() {
   if (state.armed && repl && state.queued) {
-    const { code, groove } = state.queued;
+    const { code, groove, seq } = state.queued;
     state.queued = null;
-    applyEvaluate(code, groove);
+    applyEvaluate(code, groove, seq); // keep the RECEIPT seq, not flush time
   }
 }
 
 // NOTE: the global `hush` is the silence *pattern* function (it returns a
 // Pattern and stops nothing) — repl.stop() is the real transport stop.
+// NOTE: lastCps deliberately survives hush — the server's groove keeps its
+// tempo across stop, so a local play-button restart must too.
 function applyHush() {
   clearTimeout(state.pendingSwap);
   state.queued = null;
-  state.pendingCps = null;
   repl?.stop();
   state.playing = false;
   state.paused = false; // a server stop clears any local pause (FR-6)
@@ -187,12 +188,12 @@ function connect() {
     } catch {
       return;
     }
-    if (msg.type === "evaluate") applyEvaluate(msg.code, msg.groove ?? null);
+    if (msg.type === "evaluate") applyEvaluate(msg.code, msg.groove ?? null, ++msgSeq);
     else if (msg.type === "hush") applyHush();
     else if (msg.type === "setCps" && Number.isFinite(msg.cps) && msg.cps > 0) {
-      if (repl) repl.setCps(msg.cps);
-      else state.pendingCps = msg.cps; // applied once initStrudel resolves
+      if (repl) repl.setCps(msg.cps); // pre-init: applied on repl-resolve / after the queued evaluate
       state.lastCps = msg.cps;
+      state.lastCpsSeq = ++msgSeq;
       state.tempo = String(Math.round(msg.cps * 240)); // one cycle = one bar of 4/4
       render();
     }
@@ -310,12 +311,34 @@ function buildGrid() {
         cell.style.setProperty("--vel", String(0.25 + 0.75 * vel));
       }
       cell.className = cls;
+      cell.dataset.drum = row.drum;
+      cell.dataset.step = String(i);
       rowEl.appendChild(cell);
       phCols[i].push(cell);
     });
     grid.appendChild(rowEl);
   }
 }
+
+// ---- grid click-editing (v1.2 FR-5): a click is a *request* — the server owns
+// the groove, applies the toggle, and broadcasts the result. The cell flips
+// optimistically for instant feedback; the next broadcast is authoritative.
+const CLICK_VEL_ALPHA = String(0.25 + 0.75 * 0.8); // matches the server's 0.8 (D-19)
+el("grid").addEventListener("click", (event) => {
+  const cell = event.target.closest?.(".grid-cell");
+  if (!cell || !cell.dataset.drum) return;
+  if (ws?.readyState !== WebSocket.OPEN) return; // no server, no edit
+  ws.send(
+    JSON.stringify({ type: "toggleStep", drum: cell.dataset.drum, step: Number(cell.dataset.step) }),
+  );
+  if (cell.classList.contains("hit")) {
+    cell.classList.remove("hit");
+    cell.style.removeProperty("--vel");
+  } else {
+    cell.classList.add("hit");
+    cell.style.setProperty("--vel", CLICK_VEL_ALPHA);
+  }
+});
 
 // ---- playhead loop (FR-3): cycle position mod bars is the pattern position;
 // hidden whenever stopped, paused, or introspection fails.

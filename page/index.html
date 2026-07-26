@@ -34,7 +34,8 @@
     }
     .grid-row { display: grid; grid-template-columns: 2.6em repeat(var(--steps), minmax(13px, 1.6em)); gap: 3px; align-items: stretch; }
     .grid-label { color: #9aa; align-self: center; text-transform: uppercase; }
-    .grid-cell { aspect-ratio: 1; border-radius: 3px; background: #1a1a26; }
+    .grid-cell { aspect-ratio: 1; border-radius: 3px; background: #1a1a26; cursor: pointer; }
+    .grid-cell:hover { outline: 1px solid #4ade80; }
     .grid-cell.beat { box-shadow: inset 2px 0 0 #262636; }
     .grid-cell.barline { box-shadow: inset 2px 0 0 #3a3a52; }
     .grid-cell.hit { background: #4ade80; opacity: var(--vel, 1); }

@@ -20,7 +20,8 @@ src/core/       groove schema (zod) + groove→Strudel compiler + kit list  (pur
 src/server/     sidecar.ts (HTTP static + WS push)  tools.ts (the 7 MCP tools)
 src/index.ts    stdio entry: McpServer + sidecar lifecycle
 page/           browser client: @strudel/web via CDN, bar-quantized swaps, heartbeat,
-                step-grid display + playhead (grid.js pure math), local play/pause
+                step-grid display + playhead (grid.js pure math), local play/pause,
+                click-to-toggle steps (server owns the merge — src/core/edit.ts)
 scripts/        dev-jam.ts (no-MCP dev loop)  capture.ts + e2e.ts (audio verification)
 test/           vitest (schema, compiler, sidecar, tools via in-memory transport)
 ```

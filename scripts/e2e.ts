@@ -149,6 +149,32 @@ async function main() {
   check("update_groove ok", !update.isError, textOf(update));
   await sleep(7200);
 
+  // v1.2 FR-5: clicking a grid cell toggles the step on the SERVER's groove.
+  // The oh row has a hit only at 14 — click step 1 on, then off again.
+  const ohCell = `#grid .grid-cell[data-drum="oh"][data-step="1"]`;
+  await page.click(ohCell);
+  await sleep(400); // WS round trip; server state updates immediately
+  const optimistic = (await page.evaluate(
+    `document.querySelector('${ohCell}').classList.contains("hit")`,
+  )) as boolean;
+  const npEdit = JSON.parse(textOf(await call("now_playing")));
+  const ohHits = (d: { groove: { voices: Array<{ drum: string; hits: Array<{ step: number; vel: number }> }> } }) =>
+    d.groove.voices.find((v) => v.drum === "oh")!.hits;
+  const added = ohHits(npEdit).find((h) => h.step === 1);
+  check(
+    "grid click adds the step to the session groove (v1.2)",
+    optimistic && added !== undefined && added.vel === 0.8,
+    `optimistic=${optimistic}, server hit=${JSON.stringify(added)}`,
+  );
+  await page.click(ohCell);
+  await sleep(400);
+  const npEdit2 = JSON.parse(textOf(await call("now_playing")));
+  check(
+    "second click removes it again (v1.2)",
+    ohHits(npEdit2).every((h) => h.step !== 1),
+    `oh steps: ${ohHits(npEdit2).map((h) => h.step).join(",")}`,
+  );
+
   // Phase C — tempo up.
   mark("tempo");
   const tempo = await call("set_tempo", { bpm: BPM_C });

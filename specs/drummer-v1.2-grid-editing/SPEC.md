@@ -5,10 +5,14 @@ Branch: main (D-12 carried over: straight to main, no PRs)
 
 ## Context Restore
 
-Approved 2026-07-25 (user request mid-jam: "turn on/off specific steps by clicking on
-the UI… update the JSON so the next time the LLM changes something it sees the
-update"; click model = simple toggle per AskUserQuestion). Builds on drummer-v1
-(done) and drummer-v1.1-page-grid (code complete). Nothing implemented yet. Next: M1.
+M1 (97b1bff) + M2 done 2026-07-25. New: `src/core/edit.ts` (pure toggleStep, vel 0.8),
+sidecar `onEdit` routing of `{type:"toggleStep",drum,step}` page frames, tools handler
+(state merge; push while playing; revert-push on refusal; never resurrects when
+stopped), page click-to-toggle with optimistic cell flip + hover affordance, e2e 23
+checks. M2 ALSO fixed a v1.1 regression found by e2e: an evaluate pending its
+bar-boundary swap clobbered a newer setCps via its baked-in setcpm — page now tracks
+WS receipt order (`msgSeq`/`lastCpsSeq`; pendingCps state subsumed by lastCps).
+111 unit tests + e2e 23/23. **Next: M-final** staff review of the v1.2 diff.
 
 ## Overview
 
@@ -102,7 +106,7 @@ scripts/e2e.ts           — real-click checks                              [M2]
 - **Acceptance criteria:** FR-1..FR-4, FR-6; NFR-2.
 - **Verification:** `npm test`, `npm run build`.
 - **Isolation note:** no page sends toggleStep yet; protocol addition is inert.
-- **Status:** pending
+- **Status:** done (2026-07-25, commit 97b1bff)
 
 ### M2: Page — click to toggle, optimistic UI
 - **Scope:** `page/main.js` (+ `page/grid.js` if helpers needed), `page/index.html`
@@ -116,7 +120,8 @@ scripts/e2e.ts           — real-click checks                              [M2]
 - **Verification:** `npm test`; `npm run e2e`; live jam sanity check by Adrian.
 - **Isolation note:** consumes M1's protocol; old server + new page = clicks are
   sent and ignored (no handler), UI corrected on next broadcast — degraded, not broken.
-- **Status:** pending
+- **Status:** done (2026-07-25, committed with the M2 spec update; live sanity check
+  pending with Adrian)
 
 ### M-final: Staff-level peer review
 - **Scope:** the full v1.2 diff + this SPEC.md; v1/v1.1 invariants in scope.
@@ -130,3 +135,17 @@ scripts/e2e.ts           — real-click checks                              [M2]
 ## Progress Log
 
 - 2026-07-25 — Spec drafted and approved (user request + click-model question).
+- 2026-07-25 — **M1 done** (97b1bff). TDD 7 red → 111 green. toggleStep re-validates
+  through parseGroove, which gets the would-be-empty-groove refusal for free.
+- 2026-07-25 — **M2 done.** Click path: cells carry data-drum/data-step; one delegated
+  listener on #grid sends toggleStep + flips the cell optimistically (alpha matches
+  the server's 0.8). e2e: click adds `{step:1, vel:0.8}` to oh on the SERVER groove,
+  second click removes it; 23/23. **Regression found & fixed (v1.1 escape):** the
+  click-edit evaluate, waiting for its bar-boundary swap, clobbered a subsequent
+  set_tempo's setCps with its baked-in setcpm when the swap fired ("faster after
+  set_tempo" dropped to 6.8→6.5 onsets/s — the DSP harness caught it). Root cause:
+  v1.1's `lastCps = null` on swap assumed apply order == receipt order. Fix: WS
+  receipt sequence numbers — an evaluate only supersedes lastCps if RECEIVED after it,
+  else the newer cps is re-applied post-evaluate; queued evaluates keep their receipt
+  seq; the old pendingCps state collapsed into lastCps/lastCpsSeq. lastCps still
+  survives hush (matches server groove keeping its tempo across stop).

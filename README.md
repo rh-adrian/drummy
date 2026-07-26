@@ -40,7 +40,9 @@ Then jam:
    browser autoplay policy. Leave the tab open: it shows the groove as a live step
    grid (one row per drum, cells lit by velocity, a playhead sweeping in time) with
    tempo, kit, and connection status, plus a play/pause button and the compiled
-   Strudel code behind a "show code" toggle.
+   Strudel code behind a "show code" toggle. **Click any cell to toggle that step** —
+   your edits land in the same groove the LLM works on, so "make it swing" after your
+   tweak keeps your tweak.
 3. Ask for a beat: *"give me a beat like Brick House"*, *"a dusty 90 BPM boom-bap
    groove"*, *"four-on-the-floor house at 124"*.
 4. Iterate: *"busier hats"*, *"add ghost notes on the snare"*, *"halftime it"*,
