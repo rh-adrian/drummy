@@ -6,11 +6,30 @@
 // like hardware drum machines and DAW drum editors.
 const ROW_ORDER = ["cr", "ch", "sp", "rd", "oh", "hh", "ht", "mt", "lt", "cb", "cp", "rim", "sd", "bd"];
 
+// Full instrument names for row labels (v1.4 FR-7) — display only; the wire
+// protocol and click-edit messages keep using the abbreviations.
+const DRUM_NAMES = {
+  bd: "kick",
+  sd: "snare",
+  hh: "closed hi-hat",
+  oh: "open hi-hat",
+  rim: "rimshot",
+  cp: "clap",
+  lt: "low tom",
+  mt: "mid tom",
+  ht: "high tom",
+  rd: "ride",
+  cr: "crash",
+  cb: "cowbell",
+  ch: "china",
+  sp: "splash",
+};
+
 /**
  * Build a render model from a parsed groove.
  * @param {object} groove parsed groove JSON (server-validated; hits may lack vel
  *   if a foreign server sent a raw groove — default to full velocity)
- * @returns {{rows: Array<{drum: string, cells: Array<number|null>}>, steps: number,
+ * @returns {{rows: Array<{drum: string, label: string, cells: Array<number|null>}>, steps: number,
  *   bars: number, resolution: number, beatLen: number}}
  */
 export function gridModel(groove) {
@@ -30,7 +49,7 @@ export function gridModel(groove) {
           cells[hit.step] = hit.vel ?? 1;
         }
       }
-      return { drum: voice.drum, cells };
+      return { drum: voice.drum, label: DRUM_NAMES[voice.drum] ?? voice.drum, cells };
     });
   // Beat separators: a bar is 4 beats in 4/4 (D-11), so resolution/4 steps per
   // beat — 4 at 16ths, 3 at triplet-12, 8 at 32nds.

@@ -81,6 +81,12 @@ FR-6 (fine control preserved): the JSON `voices` format remains fully supported
 and documented as the escape hatch for exact velocities and per-hit micro (FR-7 of
 v1 untouched).
 
+FR-7 (full instrument names on the page, added post-M2 by Adrian 2026-07-26): the
+page grid labels rows with full instrument names (kick, snare, closed hi-hat, …)
+instead of abbreviations; hover shows the abbreviation; wire protocol and
+click-edit messages keep using abbreviations. Name map lives in page/grid.js
+(pure, tested), DOM/CSS in main.js/index.html.
+
 ## Non-Functional Requirements
 
 NFR-1: grid parsing lives in src/core (pure, no I/O), same error-message discipline
@@ -158,7 +164,8 @@ M1 = core links (grid.ts + groove.ts), M2 = tools + docs, M-final = review.
   notation and Adrian ear-checks the feel.
 - **Isolation note:** responses gain text, existing fields unchanged; JSON voices
   path untouched.
-- **Status:** done (2026-07-26; live-jam ear check pending with Adrian, see log)
+- **Status:** done (2026-07-26; live-jam ear check PASSED — Adrian: "sounds MUCHHH
+  better" on the Funky Drummer smoke test)
 
 ### M-final: Staff-level peer review
 - **Scope:** full v1.4 diff + this SPEC.md
@@ -171,6 +178,12 @@ M1 = core links (grid.ts + groove.ts), M2 = tools + docs, M-final = review.
 
 ## Progress Log
 
+- 2026-07-26: Live-jam ear check PASSED — Adrian on the grid-notation Funky Drummer
+  jam: "sounds MUCHHH better". Grid notation + musicianship teaching confirmed as
+  the fix for stiff grooves.
+- 2026-07-26: FR-7 added at Adrian's request and done same day: full instrument
+  names as page row labels (grid.js DRUM_NAMES + label field, main.js title
+  tooltip, 8.5em label column). 160 unit tests green.
 - 2026-07-26: M2 done — grid on the tool surface (play/update input, renderGrid in
   play/update/now_playing responses, GRID_GUIDE + MUSICIANSHIP teaching), README/
   CLAUDE.md/IDEAS.md updated. 158 unit, e2e 29/29. Deviations: (1) now_playing

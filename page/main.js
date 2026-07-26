@@ -320,7 +320,8 @@ function buildGrid() {
     rowEl.style.setProperty("--steps", String(model.steps));
     const label = document.createElement("span");
     label.className = "grid-label";
-    label.textContent = row.drum;
+    label.textContent = row.label ?? row.drum;
+    label.title = row.drum; // hover shows the abbreviation the LLM/tools use
     rowEl.appendChild(label);
     row.cells.forEach((vel, i) => {
       const cell = document.createElement("div");

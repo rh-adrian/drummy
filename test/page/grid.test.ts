@@ -100,3 +100,23 @@ describe("playheadStep", () => {
     expect(playheadStep(-0.001, 1, 16)).toBeNull(); // pre-start / clock weirdness → hide
   });
 });
+
+describe("row labels (v1.4 FR-7: full instrument names on the UI)", () => {
+  it("labels every row with the full instrument name, not the abbreviation", () => {
+    const model = gridModel({
+      voices: [
+        { drum: "bd", hits: [{ step: 0 }] },
+        { drum: "hh", hits: [{ step: 0 }] },
+        { drum: "rim", hits: [{ step: 0 }] },
+        { drum: "ch", hits: [{ step: 0 }] },
+      ],
+    });
+    const labels = Object.fromEntries(model.rows.map((r) => [r.drum, r.label]));
+    expect(labels).toEqual({ bd: "kick", hh: "closed hi-hat", rim: "rimshot", ch: "china" });
+  });
+
+  it("falls back to the abbreviation for a drum it does not know", () => {
+    const model = gridModel({ voices: [{ drum: "zz", hits: [{ step: 0 }] }] });
+    expect(model.rows[0].label).toBe("zz");
+  });
+});
