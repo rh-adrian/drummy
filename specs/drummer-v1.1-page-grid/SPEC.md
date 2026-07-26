@@ -1,11 +1,14 @@
 # Page Step-Sequencer Grid (+ Safari audio fix) — Spec
 
-Status: approved
+Status: in-progress — code complete, review closed; only Adrian's Chrome+Safari
+manual eye/ear check (FR-5) remains before Status: done
 Branch: main (D-12 carried over from drummer-v1: straight to main, no PRs)
 
 ## Context Restore
 
-M1 (commit 82b44a6) + M2 (commit bc1df02) done 2026-07-25, pushed to main. New:
+M1 + M2 + M-final review all done 2026-07-25, pushed to main. **The ONLY open item:
+Adrian's manual eye/ear check in Chrome AND Safari (FR-5 has no automated gate) —
+on his confirmation, flip Status to done; on a Safari failure, reopen.** New:
 `page/grid.js` (pure gridModel/playheadStep, vitest-covered), grid+playhead+play/pause
 UI in `page/main.js`/`index.html`, groove field on evaluate push/replay
 (`setLastEvaluate(code, groove)`), e2e extended to 18 checks (grid renders, playhead
@@ -154,7 +157,8 @@ the page that consumes it. Each is safe to stop at.
   tested, D-15..D-17 followed, v1 regressions checked, undocumented deviations flagged.
 - **Acceptance criteria:** zero unaddressed confirmed findings.
 - **Verification:** full suite + e2e green; report summarized to the user.
-- **Status:** pending
+- **Status:** done (2026-07-25, review PASS-WITH-FINDINGS, all findings fixed — see
+  Progress Log; the FR-5 manual Chrome+Safari check gates the spec's overall Status)
 
 ## Progress Log
 
@@ -179,3 +183,20 @@ the page that consumes it. Each is safe to stop at.
   click handlers (FR-5). e2e grew 10→14 page checks → 18 total: grid rows/hits/
   collapsed-code, playhead advance (caught the bar wrap 15→3), local pause/restart,
   un-pause on fresh push. 98 unit tests + e2e 18/18 green. Deviations: none.
+- 2026-07-25 — **M-final done.** Staff review PASS-WITH-FINDINGS (1 MAJOR, 1 MINOR,
+  2 NIT), all fixed same day:
+  - MAJOR: local play after a set_tempo re-ran `state.code`'s stale `setcpm`,
+    reverting the audible tempo while the display showed the new one. Fixed with
+    `state.lastCps` (set on setCps receipt, cleared when a fresh evaluate applies,
+    re-applied after local replay). First fix attempt exposed a second layer:
+    `repl.evaluate()` is ASYNC — its setcpm lands after any synchronous setCps, so
+    the re-apply (and the pendingCps path, which had the same latent hazard) now
+    chains on the evaluate's promise. Regression-gated by e2e "local restart keeps
+    the post-set_tempo cps" (0.4167 → 0.5208 confirmed the bug live).
+  - MINOR: FR-4 fallback was untested → e2e now injects a code-only evaluate through
+    the page's real WS handler and asserts groove=null + codebox opens.
+  - NIT: `now_playing` → `pageStatus.paused === true` now asserted after pause.
+  - NIT (recorded as accepted reading of FR-6): the play/pause button enables on
+    `state.code` rather than "a groove exists" — deliberate; the transport operates
+    on code, so it also works in the FR-4 code-only fallback.
+  Final: 98 unit tests + e2e 21/21 green. Awaiting Adrian's Chrome+Safari check.

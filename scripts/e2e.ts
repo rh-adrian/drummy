@@ -178,6 +178,14 @@ async function main() {
   await page.click("#playpause");
   await sleep(400);
   const localPlaying = (await page.evaluate("window.__ai.state.playing")) as boolean;
+  // Local replay re-runs code whose setcpm predates the set_tempo(125); the page
+  // must re-apply the newer cps, or the audible tempo silently reverts.
+  const cpsAfterRestart = (await page.evaluate("window.__ai.getRepl().scheduler.cps")) as number;
+  check(
+    "local restart keeps the post-set_tempo cps",
+    Math.abs(cpsAfterRestart - BPM_C / 240) < 0.001,
+    `cps ${cpsAfterRestart.toFixed(4)} vs ${(BPM_C / 240).toFixed(4)}`,
+  );
   await page.click("#playpause");
   await sleep(200);
   const localPaused = (await page.evaluate(
@@ -187,6 +195,12 @@ async function main() {
     "play/pause button drives local transport",
     localPlaying === true && localPaused.playing === false && localPaused.paused === true,
     `restarted=${localPlaying}, then paused=${localPaused.paused}`,
+  );
+  const npPaused = JSON.parse(textOf(await call("now_playing")));
+  check(
+    "now_playing sees the page paused (FR-6)",
+    npPaused.pageStatus?.paused === true,
+    JSON.stringify(npPaused.pageStatus),
   );
 
   // …and a fresh push while paused applies and plays (D-18).
@@ -208,6 +222,23 @@ async function main() {
   );
   await call("stop");
   await sleep(300);
+
+  // v1.1 FR-4: an evaluate WITHOUT groove data (stale/foreign server) must fall
+  // back to showing the code. Injected through the page's real WS handler.
+  await page.evaluate(
+    `window.__ai.getWs().onmessage({ data: JSON.stringify({ type: "evaluate", code: 'setcpm(90/4)\\n$: s("bd")' }) })`,
+  );
+  await sleep(500); // stopped → swap applies immediately
+  const fallback = (await page.evaluate(
+    "({ groove: window.__ai.state.groove, open: document.querySelector('#codebox').open })",
+  )) as { groove: unknown; open: boolean };
+  check(
+    "code-only evaluate opens the code fallback (FR-4)",
+    fallback.groove === null && fallback.open === true,
+    JSON.stringify(fallback),
+  );
+  // (the injected pattern plays only until the browser closes below; the server
+  // never knew about it, so there is nothing to stop)
 
   const sampleRate = (await page.evaluate("window.__capSampleRate")) as number;
   const chunks = (await page.evaluate("window.__pcmChunks")) as number[][];

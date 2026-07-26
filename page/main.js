@@ -19,6 +19,11 @@ const state = {
   tempo: null,
   pendingSwap: null,
   pendingCps: null, // setCps received before initStrudel resolved
+  // Last cps that postdates state.code's baked-in setcpm — the local play
+  // button must re-apply it after re-evaluating, or a pause/play after a
+  // set_tempo would silently revert the audible tempo (the same staleness the
+  // server's setLastEvaluate guards reloading pages against).
+  lastCps: null,
 };
 
 // initStrudel registers evaluate/hush/etc. as globals and starts prebaking the
@@ -98,16 +103,21 @@ function applyEvaluate(code, groove = null) {
   }
   clearTimeout(state.pendingSwap);
   state.pendingSwap = setTimeout(() => {
-    repl.evaluate(code);
+    // evaluate() is async — its setcpm applies when evaluation completes, so
+    // any newer cps must be re-applied AFTER that, never synchronously here.
+    const evalDone = Promise.resolve(repl.evaluate(code)).catch(() => {});
     state.playing = true;
     state.paused = false; // a fresh push implies intent to hear it (D-18)
     state.code = code;
     state.groove = groove; // grid swaps in the same beat as the audio (FR-2)
+    state.lastCps = null; // this code's setcpm is authoritative again
     state.tempo = code.match(/setcpm\(([\d.]+)\/4\)/)?.[1] ?? state.tempo;
     if (state.pendingCps !== null) {
       // a setCps arrived while repl was null; it postdates this code's setcpm
-      repl.setCps(state.pendingCps);
-      state.tempo = String(Math.round(state.pendingCps * 240));
+      const cps = state.pendingCps;
+      evalDone.then(() => repl.setCps(cps));
+      state.tempo = String(Math.round(cps * 240));
+      state.lastCps = cps;
       state.pendingCps = null;
     }
     state.bank = bank ?? state.bank;
@@ -182,6 +192,7 @@ function connect() {
     else if (msg.type === "setCps" && Number.isFinite(msg.cps) && msg.cps > 0) {
       if (repl) repl.setCps(msg.cps);
       else state.pendingCps = msg.cps; // applied once initStrudel resolves
+      state.lastCps = msg.cps;
       state.tempo = String(Math.round(msg.cps * 240)); // one cycle = one bar of 4/4
       render();
     }
@@ -243,7 +254,13 @@ el("playpause").addEventListener("click", () => {
     state.playing = false;
     state.paused = true;
   } else {
-    repl.evaluate(state.code);
+    const evalDone = Promise.resolve(repl.evaluate(state.code)).catch(() => {});
+    // the code's setcpm may predate a set_tempo — re-apply the newer cps once
+    // the (async) evaluate has finished, or its setcpm would clobber it
+    if (state.lastCps !== null) {
+      const cps = state.lastCps;
+      evalDone.then(() => repl.setCps(cps));
+    }
     state.playing = true;
     state.paused = false;
   }
@@ -347,4 +364,4 @@ connect();
 render();
 
 // Debug/harness introspection only — not part of the page's contract.
-window.__ai = { state, getRepl: () => repl, getPlayheadStep: () => phLast };
+window.__ai = { state, getRepl: () => repl, getPlayheadStep: () => phLast, getWs: () => ws };
