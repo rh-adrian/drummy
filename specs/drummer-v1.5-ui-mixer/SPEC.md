@@ -175,7 +175,7 @@ teaching + e2e. M-final = staff review.
 - **Isolation note:** protocol addition is a new message type (old pages ignore
   nothing — they never send it); toggleStep→cycleStep swap is server-internal;
   responses only gain [vol] text.
-- **Status:** done (2026-07-26; Adrian's live fader/cycle check pending, see log)
+- **Status:** done (2026-07-26; live check PASSED — Adrian: "This is very good. This is starting to get somewhere!")
 
 ### M-final: Staff-level peer review
 - **Scope:** full v1.5 diff + this SPEC.md
@@ -187,6 +187,11 @@ teaching + e2e. M-final = staff review.
 - **Status:** pending
 
 ## Progress Log
+
+- 2026-07-26: Live check PASSED (faders, cycle clicks, count header, zoom in a
+  real jam). Adrian: "This is very good. This is starting to get somewhere!"
+  M-final review launched. Next spec queued: v1.6 (per-channel mute, clear
+  channel with undo, UI BPM control — all server-owned/LLM-visible).
 
 - 2026-07-26: FR-7 added at Adrian's request, same day: grid zoom slider
   (70-220%) in the transport bar — pure view preference via the #grid --zoom
