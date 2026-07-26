@@ -24,6 +24,21 @@ describe("gridModel", () => {
     expect(m.rows.map((r: { drum: string }) => r.drum)).toEqual(["hh", "sd", "bd"]);
   });
 
+  it("orders the v1.3 voices: china/splash with the cymbals, cowbell with the percussion", () => {
+    const m = gridModel({
+      ...GROOVE,
+      voices: [
+        { drum: "bd", hits: [{ step: 0 }] },
+        { drum: "cb", hits: [{ step: 2 }] },
+        { drum: "sp", hits: [{ step: 4 }] },
+        { drum: "rim", hits: [{ step: 6 }] },
+        { drum: "ch", hits: [{ step: 8 }] },
+        { drum: "cr", hits: [{ step: 12 }] },
+      ],
+    });
+    expect(m.rows.map((r: { drum: string }) => r.drum)).toEqual(["cr", "ch", "sp", "cb", "rim", "bd"]);
+  });
+
   it("marks cells with hit velocities and leaves the rest null", () => {
     const m = gridModel(GROOVE);
     expect(m.steps).toBe(16);

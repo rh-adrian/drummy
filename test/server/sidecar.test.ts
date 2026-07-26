@@ -68,6 +68,15 @@ describe("startSidecar", () => {
     expect(quantize.status).toBe(200);
   });
 
+  it("serves the acoustic sample map at /acoustic.json (v1.3)", async () => {
+    const s = await start();
+    const res = await fetch(`http://127.0.0.1:${PORT}/acoustic.json`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const map = await res.json();
+    expect(Array.isArray(map.Acoustic_bd)).toBe(true);
+  });
+
   it("404s unknown paths without directory traversal", async () => {
     const s = await start();
     expect((await fetch(`http://127.0.0.1:${PORT}/nope.js`)).status).toBe(404);

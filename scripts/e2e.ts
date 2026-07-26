@@ -17,6 +17,7 @@ import { detectOnsets, encodeWavPcm16 } from "../src/capture/analysis.js";
 const PORT = 4791;
 const BPM_A = 100;
 const BPM_C = 125;
+const BPM_D = 84; // acoustic phase: slow enough that snare decays separate the hits
 
 const CAPTURE_HOOK = `(() => {
   window.__pcmChunks = [];
@@ -192,6 +193,70 @@ async function main() {
 
   await sleep(5800); // ~3 bars at 125
 
+  // Phase D — v1.3 Acoustic kit, in two sub-steps.
+  //
+  // D1: cb/ch/sp play + render as grid rows. Cymbals ring for seconds after
+  // their last trigger (hush stops the pattern, not already-sounding voices),
+  // so this step comes FIRST and the measured ramp below replaces it — by
+  // measurement (and stop) time the cymbals have decayed out of every window.
+  mark("acoustic");
+  const acoustic = await call("play_groove", {
+    groove: {
+      tempoBpm: BPM_D,
+      bank: "Acoustic",
+      voices: [
+        { drum: "sd", hits: [{ step: 0 }, { step: 8 }] },
+        { drum: "cb", hits: [{ step: 2, vel: 0.7 }] },
+        { drum: "ch", hits: [{ step: 6, vel: 0.4 }] },
+        { drum: "sp", hits: [{ step: 10, vel: 0.4 }] },
+      ],
+    },
+  });
+  check("acoustic play_groove ok", !acoustic.isError, textOf(acoustic));
+  await sleep(2800); // quantized swap + FLAC streaming warm-up + render
+  const newRows = (await page.evaluate(
+    `["cb","ch","sp"].map((d) => !!document.querySelector('#grid .grid-cell[data-drum="' + d + '"]')).join(",")`,
+  )) as string;
+  check("grid shows the v1.3 voices (cb/ch/sp)", newRows === "true,true,true", `cb,ch,sp present: ${newRows}`);
+
+  // D2: velocity ramp, sd ONLY, loud→soft so each hit's long tail decays
+  // before anything quieter follows: FF (1.0) → F (0.7) → MP (0.4) → ghost
+  // (0.1), one hit every 2 beats across 2 bars (~1.43s apart at 84 BPM).
+  // The slot selection is proven by decay SHAPE, not level — the source files
+  // are peak-normalized (D-29), so a ghost recording is a short snap and an
+  // FF recording rings for seconds; gain can't fake that.
+  const ramp = await call("play_groove", {
+    groove: {
+      tempoBpm: BPM_D,
+      bank: "Acoustic",
+      bars: 2,
+      voices: [
+        {
+          drum: "sd",
+          hits: [
+            { step: 0, vel: 1 },
+            { step: 8, vel: 0.7 },
+            { step: 16, vel: 0.4 },
+            { step: 24, vel: 0.1 },
+          ],
+        },
+      ],
+    },
+  });
+  check("acoustic ramp play_groove ok", !ramp.isError, textOf(ramp));
+  await sleep(4700); // swap (≤1 bar of D1) + cymbal ring-down before the window opens
+  mark("acousticMeasure");
+  await sleep(12000); // ~2 ramp cycles measured (one cycle = 2 bars = 5.7s)
+  mark("acousticEnd");
+  const acousticState = (await page.evaluate(
+    "({ code: window.__ai.state.code, bank: window.__ai.state.bank })",
+  )) as { code: string; bank: string };
+  check(
+    "acoustic evaluate carries the velocity slot grid (.n)",
+    acousticState.bank === "Acoustic" && acousticState.code.includes(".n("),
+    `bank=${acousticState.bank}, .n present=${acousticState.code.includes(".n(")}`,
+  );
+
   // Stop.
   mark("stop");
   const stop = await call("stop");
@@ -208,13 +273,15 @@ async function main() {
   await page.click("#playpause");
   await sleep(400);
   const localPlaying = (await page.evaluate("window.__ai.state.playing")) as boolean;
-  // Local replay re-runs code whose setcpm predates the set_tempo(125); the page
-  // must re-apply the newer cps, or the audible tempo silently reverts.
+  // Local replay must come back at the LAST groove's tempo — the acoustic
+  // play_groove's setcpm was received after the earlier setCps, so by receipt
+  // order (v1.2) it superseded it. (Before v1.3 this asserted BPM_C: the newer
+  // setCps had to survive an older evaluate's late bar-boundary swap.)
   const cpsAfterRestart = (await page.evaluate("window.__ai.getRepl().scheduler.cps")) as number;
   check(
-    "local restart keeps the post-set_tempo cps",
-    Math.abs(cpsAfterRestart - BPM_C / 240) < 0.001,
-    `cps ${cpsAfterRestart.toFixed(4)} vs ${(BPM_C / 240).toFixed(4)}`,
+    "local restart keeps the last groove's cps",
+    Math.abs(cpsAfterRestart - BPM_D / 240) < 0.001,
+    `cps ${cpsAfterRestart.toFixed(4)} vs ${(BPM_D / 240).toFixed(4)}`,
   );
   await page.click("#playpause");
   await sleep(200);
@@ -315,10 +382,83 @@ async function main() {
   const rate = (a: number, b: number) => onsets.filter((t) => t >= a && t < b).length / ((b - a) / 1000);
   const rateA = rate(marks.play + 2500, marks.update - 200);
   const rateB = rate(marks.update + 2600, marks.tempo - 200); // +1 bar for the quantized swap
-  const rateC = rate(marks.tempo + 2200, marks.stop - 200);
+  const rateC = rate(marks.tempo + 2200, marks.acoustic - 200); // acoustic phase follows — keep it out
   check("phase A groove audible", rateA > 3, `${rateA.toFixed(1)} onsets/s`);
   check("busier hats after update_groove", rateB > rateA * 1.2, `${rateA.toFixed(1)} → ${rateB.toFixed(1)} onsets/s`);
   check("faster after set_tempo", rateC > rateB * 1.12, `${rateB.toFixed(1)} → ${rateC.toFixed(1)} onsets/s (125/100 BPM)`);
+
+  // v1.3: the acoustic velocity ramp — FF/F/MP/ghost, 2 beats apart. Anchor on
+  // the loudest detected onset (the FF hit) and compute the other hits'
+  // windows from the known pattern phase (onset detection can miss the vel-0.1
+  // ghost). Two independent proofs:
+  //  - levels: peak ratio FF/ghost ≈ vel ratio (gain path works)
+  //  - waveform identity: gain-normalized cross-correlation between the FF and
+  //    ghost hits. The same recording at two gains correlates ≈1; different
+  //    recordings decorrelate — gain can't fake that, so this can only pass
+  //    if .n() actually selected different recordings (D-29).
+  const acWin = onsets.filter((t) => t >= marks.acousticMeasure && t < marks.acousticEnd);
+  check("acoustic kit audible (FLAC decoded + streamed)", acWin.length >= 4, `${acWin.length} onsets in window`);
+  const peakAfter = (tMs: number) => {
+    const from = Math.max(0, Math.floor(((tMs - 30) / 1000) * sampleRate));
+    const to = Math.min(pcm.length, from + Math.floor(0.2 * sampleRate));
+    let p = 0;
+    for (let i = from; i < to; i++) p = Math.max(p, Math.abs(pcm[i]));
+    return p;
+  };
+  // Onset-aligned slice: from tMs-30ms, first sample above 30% of local peak.
+  const sliceAt = (tMs: number, lenMs: number): Float32Array => {
+    const from = Math.max(0, Math.floor(((tMs - 30) / 1000) * sampleRate));
+    const scanTo = Math.min(pcm.length, from + Math.floor(0.25 * sampleRate));
+    let localPeak = 0;
+    for (let i = from; i < scanTo; i++) localPeak = Math.max(localPeak, Math.abs(pcm[i]));
+    let start = from;
+    for (let i = from; i < scanTo; i++) {
+      if (Math.abs(pcm[i]) >= 0.3 * localPeak) {
+        start = i;
+        break;
+      }
+    }
+    return pcm.slice(start, Math.min(pcm.length, start + Math.floor((lenMs / 1000) * sampleRate)));
+  };
+  // Max normalized cross-correlation over small lags (absorbs onset-pick error).
+  const maxCorr = (a: Float32Array, b: Float32Array): number => {
+    const n = Math.min(a.length, b.length) - 300;
+    let best = 0;
+    for (let lag = -240; lag <= 240; lag += 6) {
+      let dot = 0,
+        na = 0,
+        nb = 0;
+      for (let i = 150; i < n; i++) {
+        const va = a[i];
+        const vb = b[i + lag + 150] ?? 0;
+        dot += va * vb;
+        na += va * va;
+        nb += vb * vb;
+      }
+      best = Math.max(best, Math.abs(dot) / Math.max(1e-9, Math.sqrt(na * nb)));
+    }
+    return best;
+  };
+  const spacing = (60000 / BPM_D) * 2; // one ramp hit every 2 beats
+  const ff = acWin
+    .filter((t) => t >= marks.acousticMeasure && t < marks.acousticEnd - 3 * spacing - 600)
+    .sort((a, b) => peakAfter(b) - peakAfter(a))[0];
+  let rampDetail = "no FF onset found in window";
+  let rampPass = false;
+  if (ff !== undefined) {
+    const peaks = [0, 1, 2, 3].map((k) => peakAfter(ff + k * spacing)); // FF → F → MP → ghost
+    const spread = peaks[0] / peaks[3];
+    const corr = maxCorr(sliceAt(ff, 60), sliceAt(ff + 3 * spacing, 60));
+    rampPass =
+      Number.isFinite(spread) &&
+      spread >= 4 && // vel 1 vs 0.1 through the gain path
+      peaks[0] > peaks[1] && peaks[1] > peaks[2] && peaks[2] > peaks[3] &&
+      corr < 0.8; // same-recording-at-two-gains would correlate ≈ 1
+    rampDetail =
+      `peaks FF→ghost: ${peaks.map((p) => p.toFixed(3)).join(" > ")} (spread ${spread.toFixed(1)}×); ` +
+      `FF↔ghost waveform corr ${corr.toFixed(3)} (same recording ≈ 1)`;
+  }
+  check("velocity layers select real recordings (v1.3)", rampPass, rampDetail);
 
   const tailStart = Math.max(0, pcm.length - sampleRate);
   let sum = 0;

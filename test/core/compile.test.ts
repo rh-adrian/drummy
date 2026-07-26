@@ -224,16 +224,14 @@ describe("compileGroove — Acoustic velocity layers (v1.3)", () => {
     }
   });
 
-  it("softens the gain curve so recorded dynamics are not double-applied", () => {
-    // full accent still reaches 1; quiet hits keep more gain than raw vel
+  it("keeps gain = vel: the source files are peak-normalized, so gain restores the dynamics (D-29)", () => {
     const at = (vel: number) => {
       const code = compileGroove(acoustic(vel));
       return Number(code.match(/\.gain\("([^"]+)"\)/)![1].split(" ")[4]);
     };
     expect(at(1)).toBeCloseTo(1);
-    expect(at(0.25)).toBeGreaterThan(0.25);
-    expect(at(0.25)).toBeLessThan(1);
-    expect(at(0.7)).toBeGreaterThan(at(0.25));
+    expect(at(0.25)).toBeCloseTo(0.25);
+    expect(at(0.7)).toBeCloseTo(0.7);
   });
 
   it("keeps machine-bank output free of n() and byte-identical gain", () => {

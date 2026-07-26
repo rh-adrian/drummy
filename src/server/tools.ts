@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -36,6 +38,23 @@ export interface DrummerOptions {
 }
 
 const SAMPLE_MAP_URL = "https://strudel.b-cdn.net/tidal-drum-machines.json";
+
+// The Acoustic bank's sample map lives in this repo (index only, see
+// SAMPLES.md) and is served to the page at /acoustic.json — availability
+// comes from disk, no network. Cached once; it's a committed static file.
+let acousticMapCache: Record<string, unknown> | null = null;
+function acousticSampleMap(): Record<string, unknown> {
+  if (!acousticMapCache) {
+    try {
+      const file = fileURLToPath(new URL("../../page/acoustic.json", import.meta.url));
+      acousticMapCache = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    } catch (e) {
+      console.error("[tools] failed to read acoustic.json:", e);
+      acousticMapCache = {};
+    }
+  }
+  return acousticMapCache;
+}
 
 function isUnavailable(s: SidecarHandle | SidecarUnavailable): s is SidecarUnavailable {
   return "unavailableError" in s;
@@ -91,7 +110,11 @@ const grooveShape = z
     bank: z
       .string()
       .optional()
-      .describe(`Sample bank (drum machine). One of: ${BANK_NAMES.join(", ")}. REQUIRED — call list_kits for descriptions.`),
+      .describe(
+        `Sample bank. One of: ${BANK_NAMES.join(", ")}. REQUIRED — call list_kits for descriptions. ` +
+          "Acoustic is a real velocity-layered kit: vel picks the actual recording, so dynamics matter — " +
+          "0.2-0.3 on sd triggers real ghost-note captures, and oh opens up from semi-open sizzle to a full wash as vel rises.",
+      ),
     bars: z.number().optional().describe("Loop length in bars, 1-4. Default 1."),
     resolution: z
       .number()
@@ -320,8 +343,9 @@ export function createDrummerServer(
     {
       title: "Switch drum kit",
       description:
-        "Switch the playing groove to a different drum machine's samples (same pattern, new sound). The switch lands at " +
-        "the next bar boundary. Call list_kits to see what's available and what each kit sounds like.",
+        "Switch the playing groove to a different kit's samples — a classic drum machine or the real Acoustic kit " +
+        "(same pattern, new sound). The switch lands at the next bar boundary. Call list_kits to see what's " +
+        "available and what each kit sounds like.",
       inputSchema: { bank: z.string().describe(`Sample bank name. One of: ${BANK_NAMES.join(", ")}.`) },
     },
     async ({ bank }) => {
@@ -342,31 +366,34 @@ export function createDrummerServer(
     {
       title: "List drum kits",
       description:
-        "List the available drum machines (sample banks) with sound descriptions, which drums each one provides, and the " +
-        "drum abbreviation legend. Read-only.",
+        "List the available kits (classic drum machines plus a real acoustic kit) with sound descriptions, which drums " +
+        "each one provides, and the drum abbreviation legend. Read-only.",
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
     async () => {
       if (isUnavailable(sidecar)) return err(sidecar.unavailableError);
-      let availability: Map<string, string[]> | null = null;
+      // Acoustic availability is local (acoustic.json); machine kits need the
+      // tidal map fetch and degrade to a note when it's unreachable.
+      let machineMap: Record<string, unknown> | null = null;
       try {
-        const map = await getSampleMap();
-        availability = new Map(
-          BANK_NAMES.map((bank) => [bank, DRUM_ABBRS.filter((drum) => `${bank}_${drum}` in map)]),
-        );
+        machineMap = await getSampleMap();
       } catch {
         sampleMapPromise = null; // let a later call retry
       }
+      const merged = { ...(machineMap ?? {}), ...acousticSampleMap() };
+      const availability = new Map(
+        BANK_NAMES.map((bank) => [bank, DRUM_ABBRS.filter((drum) => `${bank}_${drum}` in merged)]),
+      );
       const lines = BANKS.map((b) => {
-        const drums = availability?.get(b.name);
+        const drums = availability.get(b.name);
         const drumsNote = drums && drums.length > 0 ? ` [drums: ${drums.join(", ")}]` : "";
         return `- ${b.name} — ${b.description}${drumsNote}`;
       });
       const legend = DRUMS.map((d) => `${d.abbr} = ${d.name}`).join(", ");
-      const note = availability
+      const note = machineMap
         ? ""
-        : "\n(Per-kit drum availability unavailable right now — the standard abbreviations usually work.)";
+        : "\n(Machine-kit drum availability unavailable right now — the standard abbreviations usually work.)";
       return ok(`Available kits:\n${lines.join("\n")}\n\nDrum abbreviations: ${legend}${note}`);
     },
   );

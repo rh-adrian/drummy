@@ -60,6 +60,7 @@ const FAKE_SAMPLE_MAP: Record<string, unknown> = {
   RolandTR808_bd: ["a.wav"],
   RolandTR808_sd: ["a.wav"],
   RolandTR808_hh: ["a.wav"],
+  RolandTR808_cb: ["a.wav"],
   LinnDrum_bd: ["a.wav"],
   LinnDrum_sd: ["a.wav"],
 };
@@ -387,6 +388,31 @@ describe("list_kits", () => {
     const out = text(await client.callTool({ name: "list_kits", arguments: {} }));
     expect(out).toContain("RolandTR808");
     expect(out).toContain("LinnDrum");
+  });
+
+  it("reports Acoustic availability from the local map: no mt/cp, cb/ch/sp present (v1.3)", async () => {
+    const { client } = await setup();
+    const out = text(await client.callTool({ name: "list_kits", arguments: {} }));
+    expect(out).toMatch(/Acoustic.*\[drums: bd, sd, hh, oh, rim, lt, ht, rd, cr, cb, ch, sp\]/);
+    // cb flows through for machine kits that have it in the tidal map
+    expect(out).toMatch(/RolandTR808.*\bcb\b/);
+    expect(out).toContain("cb = cowbell");
+    expect(out).toContain("ch = china cymbal");
+    expect(out).toContain("sp = splash cymbal");
+  });
+
+  it("Acoustic availability survives a machine-map fetch failure (local, no network)", async () => {
+    const sidecar = mockSidecar();
+    const server = createDrummerServer(sidecar, {
+      fetchSampleMap: async () => {
+        throw new Error("offline");
+      },
+    });
+    const client = new Client({ name: "t", version: "0" });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await Promise.all([client.connect(ct), server.connect(st)]);
+    const out = text(await client.callTool({ name: "list_kits", arguments: {} }));
+    expect(out).toMatch(/Acoustic.*\[drums: bd, sd, hh, oh, rim, lt, ht, rd, cr, cb, ch, sp\]/);
   });
 });
 

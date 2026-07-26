@@ -4,7 +4,7 @@
 
 // Display order, top row → bottom row: cymbals/hats up top, kick on the bottom,
 // like hardware drum machines and DAW drum editors.
-const ROW_ORDER = ["cr", "rd", "oh", "hh", "ht", "mt", "lt", "cp", "rim", "sd", "bd"];
+const ROW_ORDER = ["cr", "ch", "sp", "rd", "oh", "hh", "ht", "mt", "lt", "cb", "cp", "rim", "sd", "bd"];
 
 /**
  * Build a render model from a parsed groove.

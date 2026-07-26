@@ -5,6 +5,10 @@ import { msUntilNextCycle } from "./quantize.js";
 import { gridModel, playheadStep } from "./grid.js";
 
 const SAMPLE_MAP_URL = "https://strudel.b-cdn.net/tidal-drum-machines.json";
+// Acoustic kit (v1.3): index served by the sidecar; the WAV-hosting _base
+// inside it points at the pinned salamander mirror (see SAMPLES.md).
+const ACOUSTIC_MAP_URL = "/acoustic.json";
+const ACOUSTIC_BANK = "Acoustic";
 
 const el = (id) => document.getElementById(id);
 const state = {
@@ -35,7 +39,13 @@ let msgSeq = 0;
 let repl = null;
 Promise.resolve(
   initStrudel({
-    prebake: () => samples(SAMPLE_MAP_URL),
+    // The acoustic map failing must not take down init (e.g. an old server
+    // that doesn't serve /acoustic.json yet) — machine kits still work.
+    prebake: () =>
+      Promise.all([
+        samples(SAMPLE_MAP_URL),
+        samples(ACOUSTIC_MAP_URL).catch((err) => console.warn("acoustic sample map failed to load:", err)),
+      ]),
   }),
 ).then(
   (r) => {
@@ -149,25 +159,37 @@ function applyHush() {
 }
 
 // ---- sample pre-warm: pull this bank's files into the HTTP cache so first
-// triggers don't drop (superdough fetches lazily on first hit)
+// triggers don't drop (superdough fetches lazily on first hit). Machine banks
+// warm one file per drum; the Acoustic bank warms every velocity slot, since
+// any hit's vel can select any of its 8 recordings.
 let sampleMapPromise = null;
+let acousticMapPromise = null;
 const warmedBanks = new Set();
 async function warmBank(bank) {
   if (warmedBanks.has(bank)) return;
   warmedBanks.add(bank);
+  const acoustic = bank === ACOUSTIC_BANK;
   try {
-    sampleMapPromise ??= fetch(SAMPLE_MAP_URL).then((r) => r.json());
-    const map = await sampleMapPromise;
+    let map;
+    if (acoustic) {
+      acousticMapPromise ??= fetch(ACOUSTIC_MAP_URL).then((r) => r.json());
+      map = await acousticMapPromise;
+    } else {
+      sampleMapPromise ??= fetch(SAMPLE_MAP_URL).then((r) => r.json());
+      map = await sampleMapPromise;
+    }
     const base = map._base ?? "";
     const urls = Object.entries(map)
       .filter(([k]) => k.startsWith(`${bank}_`))
-      .map(([, files]) => base + (Array.isArray(files) ? files[0] : files));
+      .flatMap(([, files]) => (Array.isArray(files) ? (acoustic ? files : files.slice(0, 1)) : [files]))
+      .map((file) => base + file);
     await Promise.allSettled(urls.map((u) => fetch(u, { mode: "cors" })));
   } catch (err) {
     // allow a retry on the next push — a transient failure must not disable
     // pre-warm for this bank (or, via a cached rejected map promise, all banks)
     warmedBanks.delete(bank);
-    sampleMapPromise = null;
+    if (acoustic) acousticMapPromise = null;
+    else sampleMapPromise = null;
     console.warn("sample pre-warm failed (playback will lazy-load):", err);
   }
 }

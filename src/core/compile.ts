@@ -15,19 +15,16 @@ import type { Groove, Voice } from "./groove.js";
 //
 // The Acoustic bank is velocity-layered (v1.3): page/acoustic.json gives every
 // voice exactly ACOUSTIC_SLOTS samples ordered soft→loud, so velocity also
-// picks the recording via an aligned .n() grid. Its gain curve is softened
-// (the recordings already carry the dynamics) but keeps enough slope that
-// velocity still shapes level continuously within a layer.
+// picks the recording via an aligned .n() grid. The source files are
+// peak-normalized (D-29), so the recordings carry the TIMBRE of each dynamic
+// while .gain(vel) restores the level — the same vel→gain rule as every
+// machine bank.
 
 const ACOUSTIC_BANK = "Acoustic";
 const ACOUSTIC_SLOTS = 8;
 
 function acousticSlot(vel: number): number {
   return Math.min(ACOUSTIC_SLOTS - 1, Math.floor(vel * ACOUSTIC_SLOTS));
-}
-
-function acousticGain(vel: number): number {
-  return 0.6 + 0.4 * vel;
 }
 
 export function compileGroove(groove: Groove): string {
@@ -60,7 +57,7 @@ function compileVoice(voice: Voice, swing: number, totalSteps: number, acoustic:
       const slots: string[] = Array(totalSteps).fill("~");
       for (const hit of hits) {
         mini[hit.step] = voice.drum;
-        gains[hit.step] = formatNumber(acoustic ? acousticGain(hit.vel) : hit.vel);
+        gains[hit.step] = formatNumber(hit.vel);
         slots[hit.step] = String(acousticSlot(hit.vel));
       }
       let entry = `s("${mini.join(" ")}")`;

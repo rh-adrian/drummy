@@ -21,8 +21,11 @@ src/server/     sidecar.ts (HTTP static + WS push)  tools.ts (the 7 MCP tools)
 src/index.ts    stdio entry: McpServer + sidecar lifecycle
 page/           browser client: @strudel/web via CDN, bar-quantized swaps, heartbeat,
                 step-grid display + playhead (grid.js pure math), local play/pause,
-                click-to-toggle steps (server owns the merge — src/core/edit.ts)
+                click-to-toggle steps (server owns the merge — src/core/edit.ts),
+                acoustic.json (Salamander sample index — velocity-layered Acoustic
+                bank; regenerate with scripts/build-acoustic-map.ts)
 scripts/        dev-jam.ts (no-MCP dev loop)  capture.ts + e2e.ts (audio verification)
+                build-acoustic-map.ts (acoustic sample map generator)
 test/           vitest (schema, compiler, sidecar, tools via in-memory transport)
 ```
 
@@ -52,6 +55,9 @@ dev processes without cleaning them up; kill anything holding port 4747.
   survive. Tool descriptions are the LLM's drummer manual (FR-10); keep them teaching
   vocabulary, not just types.
 - **Audio verification is automated** (D-13): capture harness + DSP assertions
-  (+ Gemini listen for feel). Don't replace it with "sounds fine to me".
+  (+ Gemini listen for feel). Don't replace it with "sounds fine to me". For the
+  Gemini listen use **gemini-2.5-pro** — flash confidently mis-describes drum audio
+  (v1.3 log); when a listen contradicts the DSP numbers, trust the DSP and re-listen
+  with pro.
 - Symbolic patterns + real samples is settled (vs. neural audio) — RESEARCH.md §2.
   Don't re-litigate without new evidence.

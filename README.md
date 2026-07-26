@@ -3,8 +3,11 @@
 An open-source AI drummer you can talk to and jam with.
 
 Say *"hey, give me a beat like Brick House"* and a groove starts playing through real
-TR-808 / LinnDrum / MPC60 samples in your browser. Say *"more hi-hat, make it swing"*
-and the change lands at the next bar boundary, click-free.
+TR-808 / LinnDrum / MPC60 samples in your browser — or a real **acoustic kit**
+(the Salamander Drumkit), where velocity picks the actual soft/medium/hard recording,
+ghost notes are real ghost-note captures, and the open hat blooms from semi-open
+sizzle to a full wash as you lean in. Say *"more hi-hat, make it swing"* and the
+change lands at the next bar boundary, click-free.
 
 There's no app and no UI to learn: it's an [MCP](https://modelcontextprotocol.io) server,
 so any MCP client — Claude Code, Claude Desktop — is the chat surface. The LLM authors
@@ -46,7 +49,7 @@ Then jam:
 3. Ask for a beat: *"give me a beat like Brick House"*, *"a dusty 90 BPM boom-bap
    groove"*, *"four-on-the-floor house at 124"*.
 4. Iterate: *"busier hats"*, *"add ghost notes on the snare"*, *"halftime it"*,
-   *"try it on the 909"*, *"slow it down to 95"*.
+   *"try it on the 909"*, *"play it on the acoustic kit"*, *"slow it down to 95"*.
 
 No MCP client handy? `npm run dev:jam` plays a canned groove through the same page.
 
@@ -57,7 +60,7 @@ No MCP client handy? `npm run dev:jam` plays a canned groove through the same pa
 | `play_groove` | Start (or replace) the looping groove from a structured groove JSON |
 | `update_groove` | Partial edit of the playing groove — only the changed fields are sent |
 | `set_tempo` | Change BPM smoothly without restarting the loop or losing bar phase |
-| `set_kit` | Same pattern, different drum machine's samples |
+| `set_kit` | Same pattern, different kit's samples (drum machines or the acoustic kit) |
 | `list_kits` | Available banks with sound descriptions + which drums each provides |
 | `stop` | Silence; a later `play_groove` starts fresh |
 | `now_playing` | Current state: groove, tempo, kit, playing/stopped, page connected |
@@ -156,7 +159,7 @@ mouthed-bassline → bass MIDI).
 
 This repo is **MIT** — all code here is ours and freely licensed.
 
-Two things it deliberately does **not** contain:
+Things it deliberately does **not** contain:
 
 - **Strudel** (`@strudel/web`, AGPL-3.0-or-later) — loaded unmodified from unpkg by
   *your browser* at page runtime. It is not bundled, linked, imported, or redistributed
@@ -165,6 +168,10 @@ Two things it deliberately does **not** contain:
 - **Drum samples** (tidal-drum-machines) — streamed from Strudel's CDN by the browser.
   The individual WAV licenses are unverified upstream, so they stay out of the repo
   entirely. Sources and license status are tracked in [SAMPLES.md](SAMPLES.md).
+- **The acoustic kit** (Salamander Drumkit by Rytmenpinne, CC BY-SA 3.0) — streamed
+  by the browser from a pinned GitHub mirror; only an index of file names
+  ([page/acoustic.json](page/acoustic.json)) lives here. Attribution and details in
+  [SAMPLES.md](SAMPLES.md).
 
 The trade-off is deliberate: internet required at play time, in exchange for a repo
 that is pure MIT with zero license ambiguity.
