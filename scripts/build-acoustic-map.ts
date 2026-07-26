@@ -8,7 +8,9 @@
 // take. Re-run with: npx tsx scripts/build-acoustic-map.ts
 //
 // Curation notes:
-// - sd slots 0-1 are the real ghost-note recordings (FR-4).
+// - sd slots 0-2 are the real ghost-note recordings (FR-4): the schema teaches
+//   ghosts as vel 0.2-0.4, and slot = floor(vel*8), so ghosts must cover
+//   vel < 0.375 (M-final review finding).
 // - oh ramps the semi-open ladder into fully open at the top (D-26).
 // - rim (stick) and ch (china) exist at one recorded dynamic; their 8 slots
 //   are distinct takes and .gain() carries the dynamics.
@@ -21,7 +23,7 @@ const PINNED_SHA = "8b6faa8847b4c02f4b5dd42c1836c28ffbe89d33";
 
 const SLOTS: Record<string, string[]> = {
   bd: ["kick_OH_P_1", "kick_OH_P_2", "kick_OH_F_1", "kick_OH_F_2", "kick_OH_F_3", "kick_OH_FF_1", "kick_OH_FF_2", "kick_OH_FF_3"],
-  sd: ["snare_OH_Ghost_1", "snare_OH_Ghost_2", "snare_OH_MP_1", "snare_OH_MP_2", "snare_OH_F_1", "snare_OH_F_2", "snare_OH_FF_1", "snare_OH_FF_2"],
+  sd: ["snare_OH_Ghost_1", "snare_OH_Ghost_2", "snare_OH_Ghost_3", "snare_OH_MP_1", "snare_OH_F_1", "snare_OH_F_2", "snare_OH_FF_1", "snare_OH_FF_2"],
   rim: ["snareStick_OH_F_1", "snareStick_OH_F_2", "snareStick_OH_F_3", "snareStick_OH_F_4", "snareStick_OH_F_5", "snareStick_OH_F_6", "snareStick_OH_F_7", "snareStick_OH_F_8"],
   hh: ["hihatClosed_OH_P_1", "hihatClosed_OH_P_2", "hihatClosed_OH_P_3", "hihatClosed_OH_P_4", "hihatClosed_OH_F_1", "hihatClosed_OH_F_2", "hihatClosed_OH_F_3", "hihatClosed_OH_F_4"],
   oh: ["hihatSemiOpen1_OH_P_1", "hihatSemiOpen2_OH_P_1", "hihatSemiOpen3_OH_F_1", "hihatSemiOpen4_OH_F_1", "hihatSemiOpen5_OH_F_1", "hihatSemiOpen6_OH_F_1", "hihatOpen_OH_F_1", "hihatOpen_OH_FF_1"],

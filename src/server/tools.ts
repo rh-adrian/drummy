@@ -49,8 +49,9 @@ function acousticSampleMap(): Record<string, unknown> {
       const file = fileURLToPath(new URL("../../page/acoustic.json", import.meta.url));
       acousticMapCache = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
     } catch (e) {
+      // don't cache the failure — leave null so a later call retries
       console.error("[tools] failed to read acoustic.json:", e);
-      acousticMapCache = {};
+      return {};
     }
   }
   return acousticMapCache;
@@ -113,7 +114,7 @@ const grooveShape = z
       .describe(
         `Sample bank. One of: ${BANK_NAMES.join(", ")}. REQUIRED — call list_kits for descriptions. ` +
           "Acoustic is a real velocity-layered kit: vel picks the actual recording, so dynamics matter — " +
-          "0.2-0.3 on sd triggers real ghost-note captures, and oh opens up from semi-open sizzle to a full wash as vel rises.",
+          "sd below ~0.35 triggers real ghost-note captures, and oh opens up from semi-open sizzle to a full wash as vel rises.",
       ),
     bars: z.number().optional().describe("Loop length in bars, 1-4. Default 1."),
     resolution: z

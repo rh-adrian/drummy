@@ -40,9 +40,12 @@ describe("acoustic sample map", () => {
     }
   });
 
-  it("sd's lowest slots are real ghost-note recordings (FR-4)", () => {
+  it("sd's lowest slots are real ghost-note recordings covering the taught vel 0.2-0.35 range (FR-4)", () => {
+    // slot = floor(vel*8): the schema teaches ghosts at vel 0.2-0.4, so slots
+    // 0-2 (vel < 0.375) must all be ghost captures.
     expect(map.Acoustic_sd[0]).toContain("Ghost");
     expect(map.Acoustic_sd[1]).toContain("Ghost");
+    expect(map.Acoustic_sd[2]).toContain("Ghost");
   });
 
   it("oh is velocity-split: semi-open ladder low/mid, full open on top (D-26)", () => {

@@ -247,6 +247,12 @@ describe("compileGroove — Acoustic velocity layers (v1.3)", () => {
     expect(gain[12]).toBe("0.95");
   });
 
+  it("pins the exact machine-bank output format (byte-identical guarantee, M-final NIT)", () => {
+    expect(compileGroove(groove(fourOnFloor))).toBe(
+      'setcpm(120/4)\n$: stack(\n  s("bd ~ ~ ~ bd ~ ~ ~ bd ~ ~ ~ bd ~ ~ ~").gain("1 ~ ~ ~ 1 ~ ~ ~ 1 ~ ~ ~ 1 ~ ~ ~")\n).bank("RolandTR909")',
+    );
+  });
+
   it("n grid respects multi-bar grids and multiple voices", () => {
     const code = compileGroove(
       groove({

@@ -1,20 +1,24 @@
 # Acoustic Kit (Salamander, velocity-layered) — Spec
 
-Status: in-progress
+Status: in-progress — code + review complete, Chrome live jam approved by Adrian;
+his Safari check (D-28 FLAC risk) flips this to done
 Branch: main (D-12 carried over: straight to main, no PRs)
 
 ## Context Restore
 
-M1 (32dc5cf) + M2 done 2026-07-25. Acoustic bank works end-to-end: page prebakes
-/acoustic.json (sidecar serves .json now), warmBank warms all 8 slots per used
-Acoustic drum, list_kits merges local acoustic availability with the fetched tidal
-map, grid has ch/sp/cb rows, compiler emits `.n()` slot grid with gain = vel
-(D-29: source files are peak-normalized — layers carry timbre, gain carries level;
-the M1 "softened gain" was removed). 128 unit tests; e2e 29/29 incl. FF↔ghost
-waveform-decorrelation proof of slot selection; Gemini 2.5 PRO listen: "acoustic
-kit, 8/10 human feel" (flash mis-listens — see CLAUDE.md note). **Next: M-final**
-staff review of the full v1.3 diff. Open after that: Adrian's live ear check
-(Chrome + Safari/D-28).
+All milestones done 2026-07-25 (M1 32dc5cf, M2 a2dc41e, M-final fixes follow-up
+commit). Acoustic bank works end-to-end: page prebakes /acoustic.json (sidecar
+serves .json now), warmBank warms ALL Acoustic voices' slots bank-wide on first
+use (96 files, one-time — same bank-wide pattern as machine kits), list_kits
+merges local acoustic availability with the fetched tidal map, grid has ch/sp/cb
+rows, compiler emits `.n()` slot grid with gain = vel (D-29: source files are
+peak-normalized — layers carry timbre, gain carries level). M-final:
+PASS-WITH-FINDINGS, all addressed — sd ghost slots widened to 0-2 so the taught
+vel 0.2-0.35 range hits real ghost captures; acoustic.json read failure no longer
+cached; byte-exact machine-output snapshot test added. 129 unit tests; e2e 29/29;
+Gemini 2.5 PRO listen "acoustic kit, 8/10 human feel"; Adrian's Chrome live jam:
+"nice sounds real". **Only open item: Adrian's Safari check (D-28)** — then flip
+Status to done.
 
 ## Overview
 
@@ -165,7 +169,8 @@ scripts/e2e.ts                 — acoustic playback + velocity-layer DSP checks
   accurate), undocumented deviations.
 - **Acceptance criteria:** zero unaddressed confirmed findings.
 - **Verification:** full suite + e2e green; report summarized to the user.
-- **Status:** pending
+- **Status:** done (2026-07-25, PASS-WITH-FINDINGS — 2 MINOR + 4 NIT, all
+  addressed same day; see Progress Log)
 
 ## Progress Log
 
@@ -197,3 +202,16 @@ scripts/e2e.ts                 — acoustic playback + velocity-layer DSP checks
   CLAUDE.md: pro for listens, trust DSP over a contradicting listen. e2e's
   local-restart cps check now expects the acoustic phase's tempo (last groove wins
   by receipt order, v1.2 semantics).
+- 2026-07-25 — **M-final done.** Staff review PASS-WITH-FINDINGS (no blockers/
+  majors); independently re-proved machine-bank byte-parity across 30 groove
+  combos against the v1.2 compiler. Addressed same day: (MINOR) ghost teaching
+  mismatch — sd slots 0-2 are now all real ghost captures so the schema's
+  vel-0.2-0.4 guidance actually selects them (map regenerated, teaching text says
+  "below ~0.35"); (MINOR) acousticSampleMap no longer caches a read failure;
+  (NIT) byte-exact machine-output snapshot test added; (NIT) Context Restore
+  corrected — warmBank warms bank-wide (96 files), not per-used-drum. Accepted
+  as-is: phase-D's CDN-streaming flake vector (same class as the existing sample
+  CDN dependency); Acoustic listed first in list_kits (deliberate). Re-verified:
+  129 unit tests, e2e 29/29. Adrian's live Chrome jam approved ("nice sounds
+  real" — Low Rider on the Acoustic kit with the new cb line). Safari (D-28)
+  remains the only open item.
