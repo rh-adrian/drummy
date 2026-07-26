@@ -62,38 +62,56 @@ export function gridToVoices(grid: Record<string, string>, bars: number, resolut
   return { ok: true, voices };
 }
 
+// Unknown drums sort last, matching page/grid.js (indexOf -1 would put them first).
+function order(drum: string): number {
+  const i = ROW_ORDER.indexOf(drum);
+  return i === -1 ? ROW_ORDER.length : i;
+}
+
+/** One "hh:  x-x-|..." line. barLen = steps per "||" group (a bar, or a fill window). */
+function rowText(voice: Voice, totalSteps: number, beat: number, barLen: number): string {
+  const chars = new Array<string>(totalSteps).fill("-");
+  for (const hit of voice.hits) chars[hit.step] = nearestLetter(hit.vel);
+  const barsOut: string[] = [];
+  for (let start = 0; start < totalSteps; start += barLen) {
+    const beats: string[] = [];
+    for (let b = start; b < start + barLen; b += beat) {
+      beats.push(chars.slice(b, b + beat).join(""));
+    }
+    barsOut.push(beats.join("|"));
+  }
+  // Fixed 5-char prefix so rows align for any drum name length (max 3 + ":").
+  return `${(voice.drum + ":").padEnd(5)}${barsOut.join("||")}`;
+}
+
 export function renderGrid(groove: Groove): string {
   const { bars, resolution } = groove;
   const beat = resolution / 4;
 
-  // Unknown drums sort last, matching page/grid.js (indexOf -1 would put them first).
-  const order = (drum: string) => {
-    const i = ROW_ORDER.indexOf(drum);
-    return i === -1 ? ROW_ORDER.length : i;
-  };
-  const rows = [...groove.voices]
+  const lines = [...groove.voices]
     .sort((a, b) => order(a.drum) - order(b.drum))
     .map((voice) => {
-      const chars = new Array<string>(bars * resolution).fill("-");
-      for (const hit of voice.hits) chars[hit.step] = nearestLetter(hit.vel);
-      const barsOut: string[] = [];
-      for (let bar = 0; bar < bars; bar++) {
-        const beats: string[] = [];
-        for (let start = bar * resolution; start < (bar + 1) * resolution; start += beat) {
-          beats.push(chars.slice(start, start + beat).join(""));
-        }
-        barsOut.push(beats.join("|"));
-      }
-      // Fixed 5-char prefix so rows align for any drum name length (max 3 + ":").
       // Non-unity trackGain (v1.5 FR-6) and mute (v1.6 FR-2) are annotated so
       // the LLM sees the user's mixer state.
       const gain = voice.trackGain ?? 1;
       const vol = gain === 1 ? "" : ` [vol ${Math.round(gain * 100)}%]`;
       const muted = voice.muted ? " [muted]" : "";
-      return `${(voice.drum + ":").padEnd(5)}${barsOut.join("||")}${vol}${muted}`;
+      return `${rowText(voice, bars * resolution, beat, resolution)}${vol}${muted}`;
     });
 
-  return rows.join("\n");
+  // Fills (v1.7 FR-5): rendered in the same notation so the LLM can read its
+  // own variations back and iterate on them.
+  if (groove.fills && groove.fills.length > 0) {
+    groove.fills.forEach((fill, i) => {
+      lines.push("");
+      lines.push(`fill ${i + 1} (last ${fill.steps} steps):`);
+      for (const voice of [...fill.voices].sort((a, b) => order(a.drum) - order(b.drum))) {
+        lines.push(rowText(voice, fill.steps, beat, fill.steps));
+      }
+    });
+  }
+
+  return lines.join("\n");
 }
 
 function nearestLetter(vel: number): string {

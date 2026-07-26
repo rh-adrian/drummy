@@ -78,6 +78,18 @@ export function clearTrack(groove: Groove, drum: string): ToggleResult {
 }
 
 /**
+ * Enable/disable the groove's fills (v1.7 FR-4, D-49) — the page's transport
+ * toggle. Refuses when there's nothing to toggle.
+ */
+export function setFillsEnabled(groove: Groove, enabled: boolean): ToggleResult {
+  if (!groove.fills || groove.fills.length === 0) {
+    return { ok: false, reason: "the groove has no fills to toggle" };
+  }
+  const parsed = parseGroove({ ...groove, fillsEnabled: enabled });
+  return parsed.ok ? { ok: true, groove: parsed.groove } : { ok: false, reason: parsed.error };
+}
+
+/**
  * Toggle a channel's mute (v1.6 FR-2). Hits and trackGain are untouched so
  * unmuting restores the exact sound.
  */

@@ -64,11 +64,38 @@ const grooveSchema = z.object({
   voices: z.array(voiceSchema).min(1, { message: "a voice list needs at least one voice (e.g. bd)" }).optional(),
   // Grid notation (v1.4): drum → pattern string, converted via gridToVoices.
   grid: z.record(z.string(), z.string()).optional(),
+  // Fills (v1.7): up to 6 pre-authored end-of-loop variations, substituted by
+  // in-pattern per-cycle randomness (D-46). Input form is {grid} (rows cover
+  // the LAST K steps); the parsed form {steps, voices} is also accepted so
+  // parseGroove is idempotent for edit merges.
+  fills: z
+    .array(
+      z
+        .object({
+          grid: z.record(z.string(), z.string()).optional(),
+          steps: z.number().int().optional(),
+          voices: z.array(voiceSchema).optional(),
+        })
+        .passthrough(),
+    )
+    .max(6, { message: "at most 6 fills — pick the best variations" })
+    .optional(),
+  fillsEnabled: z.boolean().default(true),
+  fillChance: z
+    .number()
+    .min(0.05, { message: "fillChance must be between 0.05 and 1 (fraction of loops that end in a fill)" })
+    .max(1, { message: "fillChance must be between 0.05 and 1 (fraction of loops that end in a fill)" })
+    .default(0.25),
 });
 
 export type Voice = z.infer<typeof voiceSchema>;
 export type Hit = Voice["hits"][number];
-export type Groove = Omit<z.infer<typeof grooveSchema>, "voices" | "grid"> & { voices: Voice[] };
+/** A parsed fill: voices with WINDOW-LOCAL steps (0..steps-1), anchored at the loop end. */
+export type Fill = { steps: number; voices: Voice[] };
+export type Groove = Omit<z.infer<typeof grooveSchema>, "voices" | "grid" | "fills"> & {
+  voices: Voice[];
+  fills?: Fill[];
+};
 
 export type ParseResult = { ok: true; groove: Groove } | { ok: false; error: string };
 
@@ -109,6 +136,48 @@ export function parseGroove(input: unknown): ParseResult {
     };
   }
 
+  // Fills (v1.7 FR-1): window length K comes from the rows; whole beats only,
+  // one beat .. one bar, anchored at the loop end (D-48).
+  let fills: Fill[] | undefined;
+  if (data.fills && data.fills.length > 0) {
+    fills = [];
+    const beat = data.resolution / 4;
+    const windowError = (label: string, k: number) =>
+      `${label}: rows must cover a whole number of beats (${beat}-step beats at resolution ${data.resolution}), ` +
+      `between one beat and one bar (${data.resolution} steps) — got ${k} steps`;
+    for (let i = 0; i < data.fills.length; i++) {
+      const fill = data.fills[i];
+      const label = `fill ${i + 1}`;
+      if (fill.grid && Object.keys(fill.grid).length > 0) {
+        const k = String(Object.values(fill.grid)[0]).replace(/[| ]/g, "").length;
+        if (k % beat !== 0 || k < beat || k > data.resolution) {
+          return { ok: false, error: windowError(label, k) };
+        }
+        const converted = gridToVoices(fill.grid, 1, k);
+        if (!converted.ok) return { ok: false, error: `${label}: ${converted.error}` };
+        fills.push({ steps: k, voices: converted.voices });
+      } else if (Array.isArray(fill.voices) && typeof fill.steps === "number") {
+        // already-parsed form (idempotency for edit merges)
+        if (fill.steps % beat !== 0 || fill.steps < beat || fill.steps > data.resolution) {
+          return { ok: false, error: windowError(label, fill.steps) };
+        }
+        for (const v of fill.voices) {
+          for (const h of v.hits) {
+            if (h.step >= fill.steps) {
+              return { ok: false, error: `${label}: step ${h.step} is outside the ${fill.steps}-step fill window` };
+            }
+          }
+        }
+        fills.push({ steps: fill.steps, voices: fill.voices });
+      } else {
+        return {
+          ok: false,
+          error: `${label}: write it as grid rows covering the LAST steps of the loop, e.g. {"grid": {"sd": "X-xg"}}`,
+        };
+      }
+    }
+  }
+
   const groove: Groove = {
     tempoBpm: data.tempoBpm,
     swing: data.swing,
@@ -116,6 +185,9 @@ export function parseGroove(input: unknown): ParseResult {
     bars: data.bars,
     resolution: data.resolution,
     voices,
+    fills,
+    fillsEnabled: data.fillsEnabled,
+    fillChance: data.fillChance,
   };
   const totalSteps = groove.bars * groove.resolution;
   for (const voice of groove.voices) {

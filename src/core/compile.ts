@@ -1,4 +1,4 @@
-import type { Groove, Voice } from "./groove.js";
+import type { Fill, Groove, Voice } from "./groove.js";
 
 // Compiles a validated groove to Strudel code.
 //
@@ -30,20 +30,50 @@ function acousticSlot(vel: number): number {
 export function compileGroove(groove: Groove): string {
   const totalSteps = groove.bars * groove.resolution;
   const acoustic = groove.bank === ACOUSTIC_BANK;
+  const head = `setcpm(${formatNumber(groove.tempoBpm)}/4)`;
+  const slow = groove.bars > 1 ? `.slow(${groove.bars})` : "";
 
-  // Muted and hitless channels are state, not sound (v1.6 D-40/D-41).
-  const entries = groove.voices
-    .filter((voice) => !voice.muted && voice.hits.length > 0)
-    .flatMap((voice) => compileVoice(voice, groove.swing, totalSteps, acoustic));
+  const base = compileStack(groove.voices, groove, totalSteps, acoustic);
+  const fills = groove.fillsEnabled && groove.fills ? groove.fills : [];
 
-  // Everything muted/empty still needs VALID code — silence, not stack().
-  if (entries.length === 0) {
-    return `setcpm(${formatNumber(groove.tempoBpm)}/4)\n$: silence`;
+  if (fills.length === 0) {
+    // Everything muted/empty still needs VALID code — silence, not stack().
+    if (base === "silence") return `${head}\n$: silence`;
+    return `${head}\n$: ${base}${slow}`;
   }
 
-  const stack = `stack(\n  ${entries.join(",\n  ")}\n).bank("${groove.bank}")${groove.bars > 1 ? `.slow(${groove.bars})` : ""}`;
+  // Fills (v1.7 D-46): one complete pattern per variant, chosen per cycle by
+  // Strudel's cycle-seeded weighted random — non-periodic by construction.
+  // slow(bars) wraps the CHOICE so a variant owns a whole loop, not one bar.
+  const variants = fills.map((fill) =>
+    compileStack(applyFill(groove.voices, fill, totalSteps), groove, totalSteps, acoustic),
+  );
+  // Base weight so P(any fill) = fillChance; each fill weighs 1.
+  const baseWeight = formatNumber((fills.length * (1 - groove.fillChance)) / groove.fillChance);
+  const entries = [`[${base}, ${baseWeight}]`, ...variants.map((v) => `[${v}, 1]`)];
+  return `${head}\n$: wrandcat(\n${entries.join(",\n")}\n)${slow}`;
+}
 
-  return `setcpm(${formatNumber(groove.tempoBpm)}/4)\n$: ${stack}`;
+function compileStack(voices: Voice[], groove: Groove, totalSteps: number, acoustic: boolean): string {
+  // Muted and hitless channels are state, not sound (v1.6 D-40/D-41).
+  const entries = voices
+    .filter((voice) => !voice.muted && voice.hits.length > 0)
+    .flatMap((voice) => compileVoice(voice, groove.swing, totalSteps, acoustic));
+  if (entries.length === 0) return "silence";
+  return `stack(\n  ${entries.join(",\n  ")}\n).bank("${groove.bank}")`;
+}
+
+/** Base with the fill overlaid: the fill OWNS its end-of-loop window (D-47). */
+function applyFill(voices: Voice[], fill: Fill, totalSteps: number): Voice[] {
+  const start = totalSteps - fill.steps;
+  const out = voices.map((v) => ({ ...v, hits: v.hits.filter((h) => h.step < start) }));
+  for (const fillVoice of fill.voices) {
+    const hits = fillVoice.hits.map((h) => ({ ...h, step: h.step + start }));
+    const existing = out.find((v) => v.drum === fillVoice.drum);
+    if (existing) existing.hits = [...existing.hits, ...hits].sort((a, b) => a.step - b.step);
+    else out.push({ ...fillVoice, hits });
+  }
+  return out;
 }
 
 function compileVoice(voice: Voice, swing: number, totalSteps: number, acoustic: boolean): string[] {
