@@ -161,6 +161,40 @@ describe("startSidecar", () => {
     rejoiner.ws.close();
   });
 
+  it("delivers and replays the groove payload alongside the code (v1.1 FR-1)", async () => {
+    const s = await start();
+    const groove = {
+      tempoBpm: 96,
+      swing: 0,
+      bank: "RolandTR808",
+      bars: 1,
+      resolution: 16,
+      voices: [{ drum: "bd", hits: [{ step: 0, vel: 1, micro: 0 }] }],
+    };
+    const live = await connect(PORT);
+    s.push({ type: "evaluate", code: '$: s("bd")', groove });
+    expect(await live.next()).toEqual({ type: "evaluate", code: '$: s("bd")', groove });
+    // late joiner gets the groove in the replay too
+    const rejoiner = await connect(PORT);
+    expect(await rejoiner.next()).toEqual({ type: "evaluate", code: '$: s("bd")', groove });
+    live.ws.close();
+    rejoiner.ws.close();
+  });
+
+  it("setLastEvaluate updates the replayed groove alongside the code (v1.1 FR-1)", async () => {
+    const s = await start();
+    const groove = { tempoBpm: 120, bank: "LinnDrum", voices: [] };
+    s.push({ type: "evaluate", code: 'setcpm(96/4)\n$: s("bd")' });
+    s.setLastEvaluate('setcpm(120/4)\n$: s("bd")', groove);
+    const client = await connect(PORT);
+    expect(await client.next()).toEqual({
+      type: "evaluate",
+      code: 'setcpm(120/4)\n$: s("bd")',
+      groove,
+    });
+    client.ws.close();
+  });
+
   it("a new evaluate clears any superseded setCps from the replay", async () => {
     const s = await start();
     s.push({ type: "setCps", cps: 0.4 });

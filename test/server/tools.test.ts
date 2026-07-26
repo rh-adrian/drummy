@@ -14,6 +14,7 @@ interface MockSidecar extends SidecarHandle {
   pushes: SidecarPush[];
   connected: boolean;
   replayCode: string | null;
+  replayGroove: unknown;
 }
 
 function mockSidecar(): MockSidecar {
@@ -23,13 +24,21 @@ function mockSidecar(): MockSidecar {
     pushes: [],
     connected: true,
     replayCode: null,
+    replayGroove: null,
     push(msg: SidecarPush) {
       self.pushes.push(msg);
-      if (msg.type === "evaluate") self.replayCode = msg.code;
-      if (msg.type === "hush") self.replayCode = null;
+      if (msg.type === "evaluate") {
+        self.replayCode = msg.code;
+        self.replayGroove = msg.groove ?? null;
+      }
+      if (msg.type === "hush") {
+        self.replayCode = null;
+        self.replayGroove = null;
+      }
     },
-    setLastEvaluate(code: string) {
+    setLastEvaluate(code: string, groove?: unknown) {
       self.replayCode = code;
+      self.replayGroove = groove ?? null;
     },
     pageConnected() {
       return self.connected;
@@ -96,6 +105,23 @@ describe("play_groove", () => {
     }
   });
 
+  it("pushes the parsed groove JSON alongside the code (v1.1 FR-1)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const push = sidecar.pushes[0];
+    expect(push.type).toBe("evaluate");
+    if (push.type === "evaluate") {
+      const g = push.groove as Record<string, unknown>;
+      expect(g).toBeTruthy();
+      expect(g.tempoBpm).toBe(96);
+      expect(g.bank).toBe("RolandTR909");
+      // parsed groove, defaults applied — not the raw input
+      expect(g.bars).toBe(1);
+      expect(g.resolution).toBe(16);
+      expect((g.voices as unknown[]).length).toBe(3);
+    }
+  });
+
   it("returns isError with the validation message for an invalid groove", async () => {
     const { client, sidecar } = await setup();
     const bad = { ...GROOVE, voices: [{ drum: "kick", hits: [{ step: 0 }] }] };
@@ -156,6 +182,9 @@ describe("update_groove", () => {
       // 16 hats now; kick voice untouched
       expect(push.code.match(/hh/g)!.length).toBeGreaterThanOrEqual(16);
       expect(push.code).toContain("bd");
+      // merged groove rides along for the grid (v1.1 FR-1)
+      const g = push.groove as { voices: Array<{ drum: string; hits: unknown[] }> };
+      expect(g.voices.find((v) => v.drum === "hh")?.hits).toHaveLength(16);
     }
     const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
     expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits).toHaveLength(16);
@@ -242,6 +271,8 @@ describe("set_tempo", () => {
     await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
     await client.callTool({ name: "set_tempo", arguments: { bpm: 120 } });
     expect(sidecar.replayCode).toContain("setcpm(120/4)");
+    // …and the replayed groove for the grid stays coherent too (v1.1 FR-1)
+    expect((sidecar.replayGroove as { tempoBpm: number }).tempoBpm).toBe(120);
   });
 
   it("rejects out-of-range tempo and errors when nothing is playing", async () => {
@@ -263,7 +294,10 @@ describe("set_kit", () => {
     expect(res.isError).toBeFalsy();
     const push = sidecar.pushes[1];
     expect(push.type).toBe("evaluate");
-    if (push.type === "evaluate") expect(push.code).toContain('.bank("LinnDrum")');
+    if (push.type === "evaluate") {
+      expect(push.code).toContain('.bank("LinnDrum")');
+      expect((push.groove as { bank: string }).bank).toBe("LinnDrum"); // v1.1 FR-1
+    }
     const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
     expect(np.bank).toBe("LinnDrum");
   });

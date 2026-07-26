@@ -18,7 +18,7 @@ export interface SidecarHandle {
   port: number;
   url: string;
   push(msg: SidecarPush): void;
-  setLastEvaluate(code: string): void;
+  setLastEvaluate(code: string, groove?: Groove): void;
   pageConnected(): boolean;
   lastStatus(): PageStatus | null;
 }
@@ -183,7 +183,11 @@ export function createDrummerServer(
       if (failed) return failed;
       const parsed = parseGroove(input);
       if (!parsed.ok) return err(`Invalid groove — ${parsed.error}`);
-      (sidecar as SidecarHandle).push({ type: "evaluate", code: compileGroove(parsed.groove) });
+      (sidecar as SidecarHandle).push({
+        type: "evaluate",
+        code: compileGroove(parsed.groove),
+        groove: parsed.groove,
+      });
       groove = parsed.groove;
       playing = true;
       return ok(`Playing: ${playingSummary(parsed.groove)}`);
@@ -250,7 +254,11 @@ export function createDrummerServer(
       };
       const parsed = parseGroove(merged);
       if (!parsed.ok) return err(`Invalid update — ${parsed.error}. The groove is unchanged.`);
-      (sidecar as SidecarHandle).push({ type: "evaluate", code: compileGroove(parsed.groove) });
+      (sidecar as SidecarHandle).push({
+        type: "evaluate",
+        code: compileGroove(parsed.groove),
+        groove: parsed.groove,
+      });
       groove = parsed.groove;
       return ok(`Updated: ${playingSummary(parsed.groove)}`);
     },
@@ -275,9 +283,10 @@ export function createDrummerServer(
       const live = sidecar as SidecarHandle;
       live.push({ type: "setCps", cps: bpm / 240 });
       groove = { ...(groove as Groove), tempoBpm: bpm };
-      // Keep the replayed evaluate's setcpm in sync so a page that reloads
-      // comes back at the new tempo, not the one baked into the old code.
-      live.setLastEvaluate(compileGroove(groove));
+      // Keep the replayed evaluate's setcpm (and grid groove) in sync so a page
+      // that reloads comes back at the new tempo, not the one baked into the
+      // old code.
+      live.setLastEvaluate(compileGroove(groove), groove);
       return ok(`Tempo is now ${bpm} BPM.`);
     },
   );
@@ -298,7 +307,7 @@ export function createDrummerServer(
         return err(`Unknown bank "${bank}" — valid banks are: ${BANK_NAMES.join(", ")}.`);
       }
       const next = { ...(groove as Groove), bank };
-      (sidecar as SidecarHandle).push({ type: "evaluate", code: compileGroove(next) });
+      (sidecar as SidecarHandle).push({ type: "evaluate", code: compileGroove(next), groove: next });
       groove = next;
       return ok(`Kit is now ${bank}. ${playingSummary(next)}`);
     },

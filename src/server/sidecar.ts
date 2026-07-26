@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
+import type { Groove } from "../core/groove.js";
 
 // HTTP + WebSocket sidecar: serves the Strudel page and pushes pattern code to
 // it. Lives in the same process as the MCP server (M3) — all logging must go
@@ -10,9 +11,10 @@ import { WebSocketServer, WebSocket } from "ws";
 
 export const DEFAULT_PORT = 4747;
 
-/** Server → page messages. */
+/** Server → page messages. `groove` (the parsed groove JSON) drives the page's
+ * step grid; old pages ignore it (v1.1 FR-1, additive). */
 export type SidecarPush =
-  | { type: "evaluate"; code: string }
+  | { type: "evaluate"; code: string; groove?: Groove }
   | { type: "hush" }
   | { type: "setCps"; cps: number };
 
@@ -32,7 +34,7 @@ export interface Sidecar {
    * delivered live another way (set_tempo pushes setCps to running pages, but
    * a reloading page must replay code with the new setcpm, not the stale one).
    */
-  setLastEvaluate(code: string): void;
+  setLastEvaluate(code: string, groove?: Groove): void;
   /** True while at least one page has sent a status heartbeat recently (guards against half-open sockets). */
   pageConnected(): boolean;
   lastStatus(): PageStatus | null;
@@ -186,8 +188,8 @@ export async function startSidecar(
         if (ws.readyState === WebSocket.OPEN) ws.send(data);
       }
     },
-    setLastEvaluate(code) {
-      lastEvaluate = { type: "evaluate", code };
+    setLastEvaluate(code, groove) {
+      lastEvaluate = { type: "evaluate", code, ...(groove ? { groove } : {}) };
       lastCps = null;
       hushed = false;
     },
