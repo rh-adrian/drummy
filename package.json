@@ -7,7 +7,7 @@
   "author": "Adrian Campos",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rh-adrian/ai-drummer.git"
+    "url": "https://github.com/rh-adrian/drummy.git"
   },
   "bin": {
     "ai-drummer": "dist/index.js"
