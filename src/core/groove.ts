@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BANK_NAMES, DRUM_ABBRS } from "./kits.js";
+import { gridToVoices } from "./grid.js";
 
 // Error messages are written for LLM self-correction: they name the offending
 // value and state the valid alternatives or range.
@@ -48,12 +49,14 @@ const grooveSchema = z.object({
       errorMap: () => ({ message: "resolution must be 8, 12, 16, 24, or 32 steps per bar (12/24 for triplet feels)" }),
     })
     .default(16),
-  voices: z.array(voiceSchema).min(1, { message: "a groove needs at least one voice (e.g. bd)" }),
+  voices: z.array(voiceSchema).min(1, { message: "a voice list needs at least one voice (e.g. bd)" }).optional(),
+  // Grid notation (v1.4): drum → pattern string, converted via gridToVoices.
+  grid: z.record(z.string(), z.string()).optional(),
 });
 
-export type Groove = z.infer<typeof grooveSchema>;
-export type Voice = Groove["voices"][number];
+export type Voice = z.infer<typeof voiceSchema>;
 export type Hit = Voice["hits"][number];
+export type Groove = Omit<z.infer<typeof grooveSchema>, "voices" | "grid"> & { voices: Voice[] };
 
 export type ParseResult = { ok: true; groove: Groove } | { ok: false; error: string };
 
@@ -71,7 +74,37 @@ export function parseGroove(input: unknown): ParseResult {
     return { ok: false, error: issues.join("; ") };
   }
 
-  const groove = parsed.data;
+  const data = parsed.data;
+
+  if (data.grid && data.voices) {
+    return {
+      ok: false,
+      error: 'provide either "grid" (notation rows) or "voices" (JSON hit lists), not both',
+    };
+  }
+  let voices: Voice[];
+  if (data.grid) {
+    const converted = gridToVoices(data.grid, data.bars, data.resolution);
+    if (!converted.ok) return { ok: false, error: converted.error };
+    voices = converted.voices;
+  } else if (data.voices) {
+    voices = data.voices;
+  } else {
+    return {
+      ok: false,
+      error:
+        'a groove needs either "grid" (notation rows, e.g. grid: {"bd": "X---|----|X---|----"}) or "voices" (JSON hit lists)',
+    };
+  }
+
+  const groove: Groove = {
+    tempoBpm: data.tempoBpm,
+    swing: data.swing,
+    bank: data.bank,
+    bars: data.bars,
+    resolution: data.resolution,
+    voices,
+  };
   const totalSteps = groove.bars * groove.resolution;
   for (const voice of groove.voices) {
     for (const hit of voice.hits) {
