@@ -940,3 +940,83 @@ describe("channel controls (v1.6)", () => {
     expect(update.description).toMatch(/undo/i);
   });
 });
+
+// --------------------------------------------------------------------------
+// v1.7: fills
+// --------------------------------------------------------------------------
+
+describe("fills (v1.7)", () => {
+  const edit = (e: object) => e as never;
+  const FILL_GROOVE = {
+    ...GROOVE,
+    fills: [{ grid: { ht: "XxXx" } }, { grid: { sd: "g-g-X-g-" } }],
+  };
+
+  it("play_groove accepts fills, compiles wrandcat, summarizes and renders them (FR-3/FR-5)", async () => {
+    const { client, sidecar } = await setup();
+    const res = (await client.callTool({ name: "play_groove", arguments: { groove: FILL_GROOVE } })) as CallToolResult;
+    expect(res.isError).toBeFalsy();
+    expect(text(res)).toMatch(/2 fills/);
+    expect(text(res)).toContain("fill 1 (last 4 steps):");
+    expect(text(res)).toContain("fill 2 (last 8 steps):");
+    const push = sidecar.pushes[0];
+    if (push.type === "evaluate") expect(push.code).toContain("wrandcat(");
+  });
+
+  it("the page toggle disables fills (code drops wrandcat), is undo-able, origin page (FR-4)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: FILL_GROOVE } });
+    sidecar.editHandler!(edit({ kind: "setFillsEnabled", enabled: false }));
+    const push = sidecar.pushes.at(-1)!;
+    expect(push.type).toBe("evaluate");
+    if (push.type === "evaluate") {
+      expect(push.code).not.toContain("wrandcat");
+      expect((push as { origin?: string }).origin).toBe("page");
+    }
+    let np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.fillsEnabled).toBe(false);
+    // the fill definitions stay readable even while disabled
+    expect(text(await client.callTool({ name: "now_playing", arguments: {} }))).toContain("fill 1 (last 4 steps):");
+    sidecar.editHandler!(edit({ kind: "undo" }));
+    np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.fillsEnabled).toBe(true);
+  });
+
+  it("refuses the toggle when the groove has no fills", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const before = sidecar.pushes.length;
+    sidecar.editHandler!(edit({ kind: "setFillsEnabled", enabled: false }));
+    // refusal re-pushes the unchanged groove (optimistic-state snap-back)
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.fillsEnabled).toBe(true);
+    expect(sidecar.pushes.length).toBeLessThanOrEqual(before + 1);
+  });
+
+  it("update_groove can add fills and change fillChance (FR-1)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const res = (await client.callTool({
+      name: "update_groove",
+      arguments: { fills: [{ grid: { ht: "XxXx" } }], fillChance: 1 },
+    })) as CallToolResult;
+    expect(res.isError).toBeFalsy();
+    const push = sidecar.pushes.at(-1)!;
+    if (push.type === "evaluate") {
+      expect(push.code).toContain("wrandcat(");
+      expect(push.code).toMatch(/, 0\]/); // base weight n(1-c)/c = 0 at chance 1
+    }
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.fillChance).toBe(1);
+    expect(np.groove.fills).toHaveLength(1);
+  });
+
+  it("teaches fill authoring (FR-6)", async () => {
+    const { client } = await setup();
+    const tools = await client.listTools();
+    const play = tools.tools.find((t) => t.name === "play_groove")!;
+    expect(play.description).toContain("fills");
+    expect(play.description).toContain("fillChance");
+    expect(play.description).toMatch(/downbeat/i);
+  });
+});

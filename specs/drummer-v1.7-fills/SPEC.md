@@ -165,7 +165,7 @@ M1 = core. M2 = server + page + teaching + e2e. M-final = staff review.
   toggle.
 - **Isolation note:** setFills is a new opt-in message; grooves without fills
   unaffected end-to-end.
-- **Status:** pending
+- **Status:** done (2026-07-26; live fills jam pending with Adrian)
 
 ### M-final: Staff-level peer review
 - **Scope:** full v1.7 diff + this SPEC.md (+ v1.6 M-final findings if its
@@ -177,6 +177,17 @@ M1 = core. M2 = server + page + teaching + e2e. M-final = staff review.
 - **Status:** pending
 
 ## Progress Log
+
+- 2026-07-26: M2 done — setFills routing + setFillsEnabled in the edit switch
+  (undo-able, origin page), playingSummary fills note, FILL_GUIDE teaching,
+  update_groove accepts fills/fillsEnabled/fillChance ([] removes), page
+  toggle (hidden without fills, tracks broadcasts). 228 unit tests; e2e 43
+  checks. Deviation: the e2e audio-proof is CPS-based, not onset-based — the
+  fills update also changes tempo, and the page's cps landing at the new
+  value proves the wrandcat code evaluated (an evaluate error would keep the
+  old cps); fill audibility itself is Adrian's live-jam check. wrandcat call
+  signature ([pattern, weight] pairs, = wchooseCycles) verified against the
+  strudel-web bundle source before compiling to it.
 
 - 2026-07-26: M1 done — fills schema (grid input + idempotent parsed form,
   window validation naming the fill), compile refactored to compileStack +

@@ -6,7 +6,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { parseGroove, type Groove } from "../core/groove.js";
 import { gridToVoices, renderGrid } from "../core/grid.js";
 import { compileGroove } from "../core/compile.js";
-import { clearTrack, cycleStep, muteTrack, setTrackGain } from "../core/edit.js";
+import { clearTrack, cycleStep, muteTrack, setFillsEnabled, setTrackGain } from "../core/edit.js";
 import { BANKS, BANK_NAMES, DRUMS, DRUM_ABBRS } from "../core/kits.js";
 import type { PageEdit, PageStatus, SidecarPush } from "./sidecar.js";
 
@@ -149,6 +149,19 @@ const grooveShape = z
       .array(voiceShape)
       .optional()
       .describe("JSON alternative to grid for exact velocities and per-hit micro-timing. One entry per drum."),
+    fills: z
+      .array(z.object({ grid: z.record(z.string(), z.string()).optional() }).passthrough())
+      .optional()
+      .describe(
+        'Up to 6 end-of-loop fill variations, each {"grid": {...}} in the same notation. Rows cover the LAST K ' +
+          "steps of the loop (whole beats, one beat to one bar). The framework randomly substitutes one at loop " +
+          "ends — non-periodically, so it never sounds mechanical.",
+      ),
+    fillsEnabled: z.boolean().optional().describe("Fills on/off. The user also has a page toggle. Default true."),
+    fillChance: z
+      .number()
+      .optional()
+      .describe("Fraction of loops that end in a fill, 0.05-1. Default 0.25 (~every 4th loop, jittered)."),
   })
   .passthrough();
 
@@ -175,6 +188,14 @@ const MUSICIANSHIP =
   "(3) Snare ghosts (g) sprinkled between back-beats are what make funk, soul, and hip-hop breathe. " +
   "(4) Use swing 0.15-0.35 for shuffled/swung feels — dead-straight time is for machine genres only. " +
   "(5) Kick and snare converse instead of stacking on the same steps. ";
+
+const FILL_GUIDE =
+  "FILLS: give the groove up to 6 pre-authored fills (groove.fills) and it stops sounding like a loop. Each fill " +
+  "owns the LAST beats of the loop completely (base hits there are dropped — write the hat into the fill if it " +
+  "should keep ticking). Vary the intensity: a couple subtle (snare ghost runs, an open-hat lift), a couple big " +
+  "(descending tom rounds ht→mt→lt, flam accents). Build INTO the next downbeat — the crash on the 1 belongs to " +
+  "the base groove's step 0, not the fill. fillChance sets how often one fires (default 0.25); selection is " +
+  "seeded per-cycle so it never repeats periodically. The user can toggle fills off on the page. ";
 
 const GROOVE_GUIDE =
   "A groove is a bar grid: `resolution` steps per bar (16 = 16th notes) times `bars` (1-4). Drums: " +
@@ -268,7 +289,9 @@ export function createDrummerServer(
             ? setTrackGain(groove, edit.drum, edit.gain)
             : edit.kind === "muteTrack"
               ? muteTrack(groove, edit.drum)
-              : clearTrack(groove, edit.drum);
+              : edit.kind === "setFillsEnabled"
+                ? setFillsEnabled(groove, edit.enabled)
+                : clearTrack(groove, edit.drum);
       if (!res.ok) {
         console.error(`[drummer] refused page edit ${what}: ${res.reason}`);
         // Snap the page's optimistic state back to reality (FR-4).
@@ -313,8 +336,13 @@ export function createDrummerServer(
 
   function playingSummary(g: Groove): string {
     const drums = g.voices.map((v) => v.drum).join(", ");
+    const fills = g.fills?.length
+      ? g.fillsEnabled
+        ? `, ${g.fills.length} fill${g.fills.length > 1 ? "s" : ""} (~${Math.round(g.fillChance * 100)}% of loops)`
+        : `, ${g.fills.length} fill${g.fills.length > 1 ? "s" : ""} (fills off)`
+      : "";
     return `${g.tempoBpm} BPM on ${g.bank}, ${g.bars} bar${g.bars > 1 ? "s" : ""} of ${drums}` +
-      `${g.swing ? `, swing ${g.swing}` : ""}. The change lands at the next bar boundary.`;
+      `${g.swing ? `, swing ${g.swing}` : ""}${fills}. The change lands at the next bar boundary.`;
   }
 
   server.registerTool(
@@ -327,6 +355,7 @@ export function createDrummerServer(
         "swing, tempo), not a note-for-note transcription. " +
         GRID_GUIDE +
         MUSICIANSHIP +
+        FILL_GUIDE +
         GROOVE_GUIDE,
       inputSchema: { groove: grooveShape.describe("The groove to play.") },
     },
@@ -378,6 +407,12 @@ export function createDrummerServer(
           .optional()
           .describe("Voices to add or replace, matched by drum. A voice given here fully replaces its previous hits."),
         removeDrums: z.array(z.string()).optional().describe("Drums to remove from the groove entirely."),
+        fills: z
+          .array(z.object({ grid: z.record(z.string(), z.string()).optional() }).passthrough())
+          .optional()
+          .describe("Replace the groove's fills (same notation as play_groove). An empty array removes them."),
+        fillsEnabled: z.boolean().optional().describe("Fills on/off."),
+        fillChance: z.number().optional().describe("Fraction of loops ending in a fill, 0.05-1."),
       },
     },
     async (edits) => {
@@ -442,6 +477,10 @@ export function createDrummerServer(
         bars: edits.bars ?? current.bars,
         resolution: edits.resolution ?? current.resolution,
         voices,
+        // fills: [] explicitly removes them; absent keeps the current ones
+        fills: edits.fills ?? current.fills,
+        fillsEnabled: edits.fillsEnabled ?? current.fillsEnabled,
+        fillChance: edits.fillChance ?? current.fillChance,
       };
       const parsed = parseGroove(merged);
       if (!parsed.ok) return err(`Invalid update — ${parsed.error}. The groove is unchanged.`);

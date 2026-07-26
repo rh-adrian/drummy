@@ -51,7 +51,9 @@ Then jam:
    works on (`trackGain`/`muted` show up to it as `[vol N%]`/`[muted]` and survive
    its edits), so "make it swing" after your tweak keeps your tweak. Pausing is
    respected: your own edits update the grid silently; only the LLM playing
-   something new resumes audio.
+   something new resumes audio. Grooves can carry up to 6 pre-authored **fills**
+   that substitute at loop ends on a non-periodic random schedule (a "fills"
+   toggle appears when the groove has them).
 3. Ask for a beat: *"give me a beat like Brick House"*, *"a dusty 90 BPM boom-bap
    groove"*, *"four-on-the-floor house at 124"*.
 4. Iterate: *"busier hats"*, *"add ghost notes on the snare"*, *"halftime it"*,

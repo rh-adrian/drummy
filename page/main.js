@@ -428,6 +428,10 @@ el("undo").addEventListener("click", () => {
   if (ws?.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify({ type: "undo" }));
 });
+el("fills").addEventListener("change", () => {
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: "setFills", enabled: el("fills").checked }));
+});
 el("bpm").addEventListener("change", () => {
   if (ws?.readyState !== WebSocket.OPEN) return;
   const bpm = Number(el("bpm").value);
@@ -538,6 +542,11 @@ function render() {
   // BPM input tracks the authoritative tempo — but never mid-typing (FR-5).
   const bpmEl = el("bpm");
   if (document.activeElement !== bpmEl && state.tempo) bpmEl.value = state.tempo;
+  // Fills toggle (v1.7): only shown when the groove has fills; always tracks
+  // the authoritative groove.
+  const hasFills = !!(state.groove && state.groove.fills && state.groove.fills.length > 0);
+  el("fillsctl").hidden = !hasFills;
+  if (hasFills) el("fills").checked = state.groove.fillsEnabled !== false;
   const btn = el("playpause");
   btn.disabled = !state.armed || !repl || !state.code;
   btn.textContent = state.playing ? "❚❚" : "▶";

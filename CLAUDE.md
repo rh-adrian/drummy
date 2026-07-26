@@ -17,6 +17,9 @@ Orient before changing anything:
 
 ```
 src/core/       groove schema (zod) + groove→Strudel compiler + kit list  (pure, no I/O)
+                fills (v1.7): ≤6 end-anchored variations, compiled to a wrandcat
+                of complete variants — per-LOOP cycle-seeded choice (slow wraps
+                the wrandcat), base weight n(1-fillChance)/fillChance
                 grid.ts: drum-tab grid notation (v1.4) — X/x/o/g velocity letters,
                 gridToVoices parse + renderGrid round-trip (responses show grooves
                 in the same notation the LLM writes)

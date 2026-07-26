@@ -333,3 +333,20 @@ describe("startSidecar", () => {
     expect(await client.next()).toEqual({ type: "evaluate", code: "$: silence", origin: "page" });
     client.ws.close();
   });
+
+  it("routes setFills frames to onEdit (v1.7 FR-4)", async () => {
+    const s = await start();
+    const edits: unknown[] = [];
+    s.onEdit((e) => edits.push(e));
+    const { ws } = await connect(PORT);
+    ws.send(JSON.stringify({ type: "setFills", enabled: false }));
+    ws.send(JSON.stringify({ type: "setFills", enabled: true }));
+    ws.send(JSON.stringify({ type: "setFills" })); // malformed: no enabled
+    ws.send(JSON.stringify({ type: "setFills", enabled: "yes" })); // malformed type
+    await new Promise((r) => setTimeout(r, 80));
+    expect(edits).toEqual([
+      { kind: "setFillsEnabled", enabled: false },
+      { kind: "setFillsEnabled", enabled: true },
+    ]);
+    ws.close();
+  });

@@ -313,6 +313,50 @@ async function main() {
   await page.click("#undo");
   await sleep(300);
 
+  // v1.7: fills. fillChance 1 forces a fill EVERY loop (deterministic for
+  // testing). The update also drops the tempo to 100 — the new wrandcat code
+  // carries setcpm(100/4), so the page's cps landing at 100/240 PROVES the
+  // wrandcat pattern evaluated successfully (an evaluate error would leave
+  // the old 120-BPM cps running).
+  const fillsUpdate = await call("update_groove", {
+    tempoBpm: 100,
+    fills: [{ grid: { ht: "XxXx" } }, { grid: { lt: "g-X-x-X-" } }],
+    fillChance: 1,
+  });
+  check("update_groove adds fills (v1.7)", !fillsUpdate.isError, textOf(fillsUpdate).split("\n")[0]);
+  check(
+    "response renders the fill variations (v1.7 FR-5)",
+    textOf(fillsUpdate).includes("fill 1 (last 4 steps):") && textOf(fillsUpdate).includes("fill 2 (last 8 steps):"),
+    textOf(fillsUpdate).split("fill 1")[1]?.split("\n").slice(0, 2).join(" / ") ?? "missing",
+  );
+  const npFills = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
+  check(
+    "wrandcat compiled with fillChance 1 (v1.7 FR-3)",
+    npFills.groove.fillChance === 1 && npFills.groove.fills.length === 2,
+    `fillChance=${npFills.groove.fillChance}, fills=${npFills.groove.fills.length}`,
+  );
+  await sleep(2600); // let the bar-quantized swap land (~2s bar at 120 + lead)
+  const cpsAfterFills = (await page.evaluate("window.__ai.getRepl().scheduler.cps")) as number;
+  check(
+    "wrandcat pattern evaluated on the page (cps proves the swap, v1.7 D-46)",
+    Math.abs(cpsAfterFills - 100 / 240) < 0.001,
+    `cps ${cpsAfterFills.toFixed(4)} vs ${(100 / 240).toFixed(4)}`,
+  );
+
+  // The transport toggle turns fills off (server-owned, undo-able).
+  const fillsVisible = (await page.evaluate('!document.querySelector("#fillsctl").hidden')) as boolean;
+  await page.click("#fills");
+  await sleep(400);
+  const npOff = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
+  await page.click("#undo");
+  await sleep(400);
+  const npBack = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
+  check(
+    "fills toggle appears, disables server-side, and undo restores it (v1.7 FR-4)",
+    fillsVisible && npOff.groove.fillsEnabled === false && npBack.groove.fillsEnabled === true,
+    `visible=${fillsVisible}, off=${npOff.groove.fillsEnabled}, undone=${npBack.groove.fillsEnabled}`,
+  );
+
   // D2: velocity ramp, sd ONLY, loud→soft so each hit's long tail decays
   // before anything quieter follows: FF (1.0) → F (0.7) → MP (0.4) → ghost
   // (0.1), one hit every 2 beats across 2 bars (~1.43s apart at 84 BPM).

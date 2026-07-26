@@ -35,6 +35,7 @@ export type PageEdit =
   | { kind: "muteTrack"; drum: string }
   | { kind: "clearTrack"; drum: string }
   | { kind: "setTempo"; bpm: number }
+  | { kind: "setFillsEnabled"; enabled: boolean }
   | { kind: "undo" };
 
 export interface Sidecar {
@@ -189,6 +190,8 @@ export async function startSidecar(
           editHandler?.({ kind: type, drum });
         } else if (type === "setTempo" && typeof (msg as { bpm?: unknown }).bpm === "number") {
           editHandler?.({ kind: "setTempo", bpm: (msg as { bpm: number }).bpm });
+        } else if (type === "setFills" && typeof (msg as { enabled?: unknown }).enabled === "boolean") {
+          editHandler?.({ kind: "setFillsEnabled", enabled: (msg as { enabled: boolean }).enabled });
         } else if (type === "undo") {
           editHandler?.({ kind: "undo" });
         }
