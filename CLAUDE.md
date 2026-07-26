@@ -1,4 +1,4 @@
-# AI Drummer — Agent Instructions
+# Drummy (AI Drummer) — Agent Instructions
 
 Open-source conversational AI drummer: a drummer-vocabulary MCP server (TypeScript,
 stdio) that compiles structured grooves to Strudel code and pushes them over websocket

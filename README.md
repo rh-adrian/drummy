@@ -1,4 +1,4 @@
-# AI Drummer
+# Drummy 🥁
 
 An open-source AI drummer you can talk to and jam with.
 
@@ -36,8 +36,8 @@ Chrome/Safari, internet at play time
 (Strudel + samples load from CDNs), and an MCP client.
 
 ```bash
-git clone https://github.com/rh-adrian/ai-drummer.git
-cd ai-drummer
+git clone https://github.com/rh-adrian/drummy.git
+cd drummy
 npm install
 npm run build
 ```
@@ -45,7 +45,7 @@ npm run build
 Register with Claude Code (`-s user` makes it available in every session):
 
 ```bash
-claude mcp add -s user ai-drummer -- node "$PWD/dist/index.js"
+claude mcp add -s user drummy -- node "$PWD/dist/index.js"
 ```
 
 For Claude Desktop or other MCP clients, copy [.mcp.json.example](.mcp.json.example)
@@ -150,7 +150,7 @@ top of the next bar (~2–4 s) is how you'd count a band in anyway.
 | `AI_DRUMMER_PORT` | `4747` | Port for the page + websocket sidecar |
 
 Set it in the MCP registration, e.g.
-`claude mcp add -s user ai-drummer -e AI_DRUMMER_PORT=5757 -- node "$PWD/dist/index.js"`.
+`claude mcp add -s user drummy -e AI_DRUMMER_PORT=5757 -- node "$PWD/dist/index.js"`.
 
 ## Troubleshooting
 
@@ -160,7 +160,7 @@ Set it in the MCP registration, e.g.
   it pauses locally without the LLM knowing to restart.
 - **"No drummer page is connected"** — the tool result already says it: open
   http://localhost:4747 and click Start, then ask again.
-- **"port 4747 is already in use"** — another ai-drummer session (another Claude
+- **"port 4747 is already in use"** — another Drummy session (another Claude
   window?) owns the port. One jam session per port: close the other session, or give
   this one its own `AI_DRUMMER_PORT`.
 - **No internet** — playback needs it: the page loads `@strudel/web` from unpkg and

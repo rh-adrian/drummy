@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "ai-drummer": {
+    "drummy": {
       "command": "node",
-      "args": ["/absolute/path/to/ai-drummer/dist/index.js"],
+      "args": ["/absolute/path/to/drummy/dist/index.js"],
       "env": {
         "AI_DRUMMER_PORT": "4747"
       }
