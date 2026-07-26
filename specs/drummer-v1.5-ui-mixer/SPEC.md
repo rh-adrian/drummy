@@ -75,6 +75,11 @@ count per step — resolution 16: `1 e & a`, 8: `1 &`, 12: `1 & a` (triplet),
 bar boundaries a stronger one, on header and cells alike. Header comes from pure
 math in page/grid.js (testable), DOM/CSS in main.js/index.html (D-37).
 
+FR-7 (grid zoom, added by Adrian 2026-07-26): a 70-220% zoom slider in the
+transport bar scales the whole grid (cells, header, labels, faders) via a CSS
+variable; page-local view preference persisted in localStorage, not groove
+state.
+
 FR-6 (LLM awareness): renderGrid appends ` [vol N%]` to any row whose trackGain
 ≠ 1, so mixes show up in play/update/now_playing responses. Teaching text: the
 groove schema documents trackGain (mix, not dynamics); GROOVE_GUIDE teaches the
@@ -182,6 +187,12 @@ teaching + e2e. M-final = staff review.
 - **Status:** pending
 
 ## Progress Log
+
+- 2026-07-26: FR-7 added at Adrian's request, same day: grid zoom slider
+  (70-220%) in the transport bar — pure view preference via the #grid --zoom
+  CSS variable (everything grid-side is em-based so one variable scales cells,
+  count header, labels, faders), persisted in localStorage, never touches the
+  groove. Motivated by the count-header syllables being too small to read.
 
 - 2026-07-26: M2 done — sidecar PageEdit is now a discriminated union
   (cycleStep/setTrackGain; legacy "toggleStep" frames get cycle semantics so

@@ -391,6 +391,23 @@ function buildGrid() {
   }
 }
 
+// ---- grid zoom (v1.5 FR-7 addition): a pure view preference — scales the
+// whole grid live via the --zoom CSS variable; never touches the groove.
+// Persisted locally so the size survives reloads.
+const ZOOM_KEY = "ai-drummer-zoom";
+{
+  const zoom = el("zoom");
+  const saved = Number(localStorage.getItem(ZOOM_KEY));
+  if (saved >= 70 && saved <= 220) {
+    zoom.value = String(saved);
+    el("grid").style.setProperty("--zoom", String(saved / 100));
+  }
+  zoom.addEventListener("input", () => {
+    el("grid").style.setProperty("--zoom", String(Number(zoom.value) / 100));
+    localStorage.setItem(ZOOM_KEY, zoom.value);
+  });
+}
+
 // ---- track faders (v1.5 FR-3): a slider release is a request, like a click —
 // the server merges setTrackGain and the next broadcast repositions the slider.
 el("grid").addEventListener("change", (event) => {
