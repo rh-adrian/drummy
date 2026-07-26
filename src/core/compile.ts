@@ -31,7 +31,15 @@ export function compileGroove(groove: Groove): string {
   const totalSteps = groove.bars * groove.resolution;
   const acoustic = groove.bank === ACOUSTIC_BANK;
 
-  const entries = groove.voices.flatMap((voice) => compileVoice(voice, groove.swing, totalSteps, acoustic));
+  // Muted and hitless channels are state, not sound (v1.6 D-40/D-41).
+  const entries = groove.voices
+    .filter((voice) => !voice.muted && voice.hits.length > 0)
+    .flatMap((voice) => compileVoice(voice, groove.swing, totalSteps, acoustic));
+
+  // Everything muted/empty still needs VALID code — silence, not stack().
+  if (entries.length === 0) {
+    return `setcpm(${formatNumber(groove.tempoBpm)}/4)\n$: silence`;
+  }
 
   const stack = `stack(\n  ${entries.join(",\n  ")}\n).bank("${groove.bank}")${groove.bars > 1 ? `.slow(${groove.bars})` : ""}`;
 

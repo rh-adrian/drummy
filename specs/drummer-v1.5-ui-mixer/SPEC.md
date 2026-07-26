@@ -1,6 +1,6 @@
 # Drummer v1.5 — Count Header, Track Volume, Velocity Cell Editing — Spec
 
-Status: in-progress
+Status: done
 Branch: main (straight-to-main per D-12)
 
 ## Context Restore
@@ -184,7 +184,11 @@ teaching + e2e. M-final = staff review.
 - **Acceptance criteria:** zero unaddressed confirmed findings; accepted ones
   recorded as D-*.
 - **Verification:** full suite + e2e green; review summarized to Adrian.
-- **Status:** pending
+- **Status:** done (2026-07-26 — PASS-WITH-FINDINGS: 2 MINOR, 3 NIT, no blockers.
+  MINOR-1 dead toggleStep/CLICK_VELOCITY deleted in the v1.6 M1 commit;
+  MINOR-2 zoom e2e check added with v1.6 M2's e2e work; NITs accepted:
+  midpoint snap-tier cosmetics, stopped-refusal staleness (pre-existing),
+  setTrackGain rejects instead of clamping — better errors)
 
 ## Progress Log
 

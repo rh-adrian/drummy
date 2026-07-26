@@ -1,11 +1,10 @@
 import { parseGroove, type Groove } from "./groove.js";
 
-// Pure toggle merge for grid click-editing (v1.2 FR-2/FR-4). The server owns
-// the session groove; a page click is a request that lands here. Like the
-// compiler, this is pure core logic: no I/O, input never mutated.
-
-/** New hits land at a solid, audible velocity; nuance stays the LLM's job (D-19). */
-export const CLICK_VELOCITY = 0.8;
+// Pure merges for page editing (v1.2 clicks → v1.5 cycle/faders → v1.6
+// mute/clear). The server owns the session groove; every page control is a
+// request that lands here. Like the compiler: no I/O, input never mutated.
+// (v1.2's toggleStep and its fixed 0.8 click velocity, D-19, were overturned
+// by D-36 and deleted in v1.6 — v1.5 M-final review MINOR-1.)
 
 export type ToggleResult = { ok: true; groove: Groove } | { ok: false; reason: string };
 
@@ -37,8 +36,9 @@ function nextTier(vel: number | null): number | null {
 
 /**
  * Advance the cell at (drum, step) one click through the velocity cycle.
- * Same guards as toggleStep: known voice, in-range step, groove re-validated,
- * a voice losing its last hit is dropped, an empty groove is refused.
+ * Guards: known voice, in-range integer step, groove re-validated. A voice
+ * losing its last hit KEEPS its row (v1.6 D-40 — cleared/emptied channels are
+ * legal state).
  */
 export function cycleStep(groove: Groove, drum: string, step: number): ToggleResult {
   const steps = groove.bars * groove.resolution;
@@ -51,17 +51,42 @@ export function cycleStep(groove: Groove, drum: string, step: number): ToggleRes
   }
   const current = voice.hits.find((h) => h.step === step);
   const next = nextTier(current ? current.vel : null);
-  const voices = groove.voices
-    .map((v) => {
-      if (v.drum !== drum) return v;
-      const others = v.hits.filter((h) => h.step !== step);
-      const hits =
-        next === null
-          ? others
-          : [...others, { step, vel: next, micro: current?.micro ?? 0 }].sort((a, b) => a.step - b.step);
-      return { ...v, hits };
-    })
-    .filter((v) => v.hits.length > 0);
+  const voices = groove.voices.map((v) => {
+    if (v.drum !== drum) return v;
+    const others = v.hits.filter((h) => h.step !== step);
+    const hits =
+      next === null
+        ? others
+        : [...others, { step, vel: next, micro: current?.micro ?? 0 }].sort((a, b) => a.step - b.step);
+    return { ...v, hits };
+  });
+  const parsed = parseGroove({ ...groove, voices });
+  return parsed.ok ? { ok: true, groove: parsed.groove } : { ok: false, reason: parsed.error };
+}
+
+/**
+ * Empty a channel's hits (v1.6 FR-3). The row, fader, and mute state stay —
+ * the page's undo covers recovery of the pattern.
+ */
+export function clearTrack(groove: Groove, drum: string): ToggleResult {
+  if (!groove.voices.some((v) => v.drum === drum)) {
+    return { ok: false, reason: `no ${drum} voice in the groove` };
+  }
+  const voices = groove.voices.map((v) => (v.drum === drum ? { ...v, hits: [] } : v));
+  const parsed = parseGroove({ ...groove, voices });
+  return parsed.ok ? { ok: true, groove: parsed.groove } : { ok: false, reason: parsed.error };
+}
+
+/**
+ * Toggle a channel's mute (v1.6 FR-2). Hits and trackGain are untouched so
+ * unmuting restores the exact sound.
+ */
+export function muteTrack(groove: Groove, drum: string): ToggleResult {
+  const voice = groove.voices.find((v) => v.drum === drum);
+  if (!voice) {
+    return { ok: false, reason: `no ${drum} voice in the groove` };
+  }
+  const voices = groove.voices.map((v) => (v.drum === drum ? { ...v, muted: !v.muted } : v));
   const parsed = parseGroove({ ...groove, voices });
   return parsed.ok ? { ok: true, groove: parsed.groove } : { ok: false, reason: parsed.error };
 }
@@ -81,32 +106,3 @@ export function setTrackGain(groove: Groove, drum: string, gain: number): Toggle
   return parsed.ok ? { ok: true, groove: parsed.groove } : { ok: false, reason: parsed.error };
 }
 
-/**
- * Toggle the hit at (drum, step): present → removed (a voice losing its last
- * hit is dropped), absent → added at CLICK_VELOCITY. Only drums that already
- * have a voice in the groove can be toggled — the grid shows no other rows.
- */
-export function toggleStep(groove: Groove, drum: string, step: number): ToggleResult {
-  const steps = groove.bars * groove.resolution;
-  if (!Number.isInteger(step) || step < 0 || step >= steps) {
-    return { ok: false, reason: `step ${step} out of range 0..${steps - 1}` };
-  }
-  const voice = groove.voices.find((v) => v.drum === drum);
-  if (!voice) {
-    return { ok: false, reason: `no ${drum} voice in the groove` };
-  }
-  const has = voice.hits.some((h) => h.step === step);
-  const voices = groove.voices
-    .map((v) => {
-      if (v.drum !== drum) return v;
-      const hits = has
-        ? v.hits.filter((h) => h.step !== step)
-        : [...v.hits, { step, vel: CLICK_VELOCITY, micro: 0 }].sort((a, b) => a.step - b.step);
-      return { ...v, hits };
-    })
-    .filter((v) => v.hits.length > 0);
-  // Re-validate the merged result — this also refuses edits that would leave
-  // the groove empty (a groove needs at least one voice).
-  const parsed = parseGroove({ ...groove, voices });
-  return parsed.ok ? { ok: true, groove: parsed.groove } : { ok: false, reason: parsed.error };
-}

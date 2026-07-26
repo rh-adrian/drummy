@@ -184,3 +184,19 @@ describe("cycleNext (v1.5 FR-4: optimistic click preview)", () => {
     expect(cycleNext(0.9)).toBe(0.25); // snaps to 1.0 tier
   });
 });
+
+describe("gridModel muted flag (v1.6)", () => {
+  it("exposes muted per row, defaulting false, and models empty channels", () => {
+    const model = gridModel({
+      voices: [
+        { drum: "bd", hits: [{ step: 0 }], muted: true },
+        { drum: "sd", hits: [] },
+      ],
+    });
+    const bd = model.rows.find((r) => r.drum === "bd");
+    const sd = model.rows.find((r) => r.drum === "sd");
+    expect(bd.muted).toBe(true);
+    expect(sd.muted).toBe(false);
+    expect(sd.cells.every((c) => c === null)).toBe(true);
+  });
+});

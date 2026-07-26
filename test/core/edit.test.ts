@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { parseGroove, type Groove } from "../../src/core/groove.js";
-import { toggleStep } from "../../src/core/edit.js";
 
-// v1.2 FR-2/FR-4: pure toggle merge — the server-side core of click-to-edit.
+// v1.2's toggleStep (fixed 0.8 click velocity, D-19) was overturned by v1.5's
+// cycle editing (D-36) and deleted in v1.6 — cycleStep below is the server-side
+// core of click-to-edit.
 
 function groove(): Groove {
   const parsed = parseGroove({
@@ -16,61 +17,6 @@ function groove(): Groove {
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.groove;
 }
-
-describe("toggleStep", () => {
-  it("adds a hit at vel 0.8 to an existing voice (D-19)", () => {
-    const res = toggleStep(groove(), "hh", 6);
-    expect(res.ok).toBe(true);
-    if (res.ok) {
-      const hh = res.groove.voices.find((v) => v.drum === "hh")!;
-      expect(hh.hits.map((h) => h.step).sort((a, b) => a - b)).toEqual([2, 6]);
-      expect(hh.hits.find((h) => h.step === 6)!.vel).toBe(0.8);
-    }
-  });
-
-  it("removes an existing hit", () => {
-    const res = toggleStep(groove(), "bd", 8);
-    expect(res.ok).toBe(true);
-    if (res.ok) {
-      expect(res.groove.voices.find((v) => v.drum === "bd")!.hits.map((h) => h.step)).toEqual([0]);
-    }
-  });
-
-  it("drops the voice when its last hit is removed", () => {
-    const res = toggleStep(groove(), "hh", 2);
-    expect(res.ok).toBe(true);
-    if (res.ok) {
-      expect(res.groove.voices.map((v) => v.drum)).toEqual(["bd"]);
-    }
-  });
-
-  it("refuses edits that would leave the groove empty", () => {
-    const g = groove();
-    const only = toggleStep(g, "hh", 2);
-    if (!only.ok) throw new Error("setup");
-    const one = toggleStep(only.groove, "bd", 0);
-    if (!one.ok) throw new Error("setup");
-    // bd is now the only voice with only step 8
-    const res = toggleStep(one.groove, "bd", 8);
-    expect(res.ok).toBe(false);
-  });
-
-  it("refuses a drum with no row and an out-of-range step", () => {
-    expect(toggleStep(groove(), "cr", 0).ok).toBe(false); // no cr voice in the groove
-    expect(toggleStep(groove(), "kick", 0).ok).toBe(false); // not a drum at all
-    expect(toggleStep(groove(), "bd", 16).ok).toBe(false); // 1 bar × res 16 → max 15
-    expect(toggleStep(groove(), "bd", -1).ok).toBe(false);
-    expect(toggleStep(groove(), "bd", 3.5).ok).toBe(false);
-  });
-
-  it("does not mutate the input groove", () => {
-    const g = groove();
-    const before = JSON.stringify(g);
-    toggleStep(g, "hh", 6);
-    toggleStep(g, "bd", 8);
-    expect(JSON.stringify(g)).toBe(before);
-  });
-});
 
 // v1.5 FR-4/FR-3: cycle editing + track volume (pure merges).
 
@@ -112,9 +58,9 @@ describe("cycleStep", () => {
     if (r.ok) expect(vel(r.groove, "hh", 2)).toBe(1);
   });
 
-  it("drops a voice whose last hit cycles off, but refuses to empty the groove", () => {
+  it("keeps a voice whose last hit cycles off — the empty row persists (v1.6 D-40)", () => {
     let g = groove();
-    // hh 0.5 → X → g → off (3 clicks) leaves hh empty → voice dropped
+    // hh 0.5 → X → g → off (3 clicks) leaves hh empty but PRESENT
     for (const expected of [1, 0.25]) {
       const r = cycleStep(g, "hh", 2);
       expect(r.ok).toBe(true);
@@ -125,12 +71,24 @@ describe("cycleStep", () => {
     const off = cycleStep(g, "hh", 2);
     expect(off.ok).toBe(true);
     if (!off.ok) return;
-    expect(off.groove.voices.some((v) => v.drum === "hh")).toBe(false);
+    const hh = off.groove.voices.find((v) => v.drum === "hh");
+    expect(hh).toBeDefined();
+    expect(hh!.hits).toEqual([]);
   });
 
   it("refuses out-of-range steps and unknown voices with reasons", () => {
     expect(cycleStep(groove(), "bd", 99).ok).toBe(false);
     expect(cycleStep(groove(), "sp", 0).ok).toBe(false);
+    expect(cycleStep(groove(), "bd", 3.5).ok).toBe(false);
+    expect(cycleStep(groove(), "bd", -1).ok).toBe(false);
+  });
+
+  it("does not mutate the input groove", () => {
+    const g = groove();
+    const before = JSON.stringify(g);
+    cycleStep(g, "hh", 6);
+    cycleStep(g, "bd", 8);
+    expect(JSON.stringify(g)).toBe(before);
   });
 });
 
@@ -145,5 +103,50 @@ describe("setTrackGain", () => {
     expect(setTrackGain(groove(), "hh", 1.6).ok).toBe(false);
     expect(setTrackGain(groove(), "hh", -0.1).ok).toBe(false);
     expect(setTrackGain(groove(), "sp", 0.5).ok).toBe(false);
+  });
+});
+
+// v1.6 FR-2/FR-3: mute + clear (pure merges).
+
+import { clearTrack, muteTrack } from "../../src/core/edit.js";
+
+describe("clearTrack", () => {
+  it("empties the channel's hits but keeps the voice, fader, and mute state", () => {
+    const withGain = setTrackGain(groove(), "hh", 0.6);
+    if (!withGain.ok) throw new Error("setup");
+    const res = clearTrack(withGain.groove, "hh");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const hh = res.groove.voices.find((v) => v.drum === "hh")!;
+    expect(hh.hits).toEqual([]);
+    expect(hh.trackGain).toBe(0.6);
+  });
+
+  it("refuses unknown drums with a reason", () => {
+    const res = clearTrack(groove(), "sp");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toContain("sp");
+  });
+});
+
+describe("muteTrack", () => {
+  it("toggles muted on and off, preserving hits and fader", () => {
+    const withGain = setTrackGain(groove(), "hh", 0.6);
+    if (!withGain.ok) throw new Error("setup");
+    const on = muteTrack(withGain.groove, "hh");
+    expect(on.ok).toBe(true);
+    if (!on.ok) return;
+    const hhOn = on.groove.voices.find((v) => v.drum === "hh")!;
+    expect(hhOn.muted).toBe(true);
+    expect(hhOn.trackGain).toBe(0.6);
+    expect(hhOn.hits.length).toBeGreaterThan(0);
+    const off = muteTrack(on.groove, "hh");
+    expect(off.ok).toBe(true);
+    if (!off.ok) return;
+    expect(off.groove.voices.find((v) => v.drum === "hh")!.muted).toBe(false);
+  });
+
+  it("refuses unknown drums", () => {
+    expect(muteTrack(groove(), "sp").ok).toBe(false);
   });
 });

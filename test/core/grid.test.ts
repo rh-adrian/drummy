@@ -23,6 +23,7 @@ describe("gridToVoices", () => {
           { step: 3, vel: 0.25, micro: 0 },
         ],
         trackGain: 1, // v1.5: grid rows enter at unity mix
+        muted: false, // v1.6: and unmuted
       },
     ]);
   });
@@ -268,5 +269,23 @@ describe("renderGrid trackGain annotation (v1.5 FR-6)", () => {
     const lines = renderGrid(g).split("\n");
     expect(lines[0]).toBe("hh:  x---|----|----|---- [vol 60%]");
     expect(lines[1]).toBe("bd:  X---|----|----|----");
+  });
+});
+
+describe("renderGrid empty and muted channels (v1.6)", () => {
+  it("renders an empty channel as an all-rest row and tags muted rows", () => {
+    const g = groove({
+      tempoBpm: 100,
+      bank: "Acoustic",
+      voices: [
+        { drum: "hh", hits: [] },
+        { drum: "sd", hits: [{ step: 4, vel: 1 }], muted: true, trackGain: 0.6 },
+        { drum: "bd", hits: [{ step: 0, vel: 1 }] },
+      ],
+    });
+    const lines = renderGrid(g).split("\n");
+    expect(lines[0]).toBe("hh:  ----|----|----|----");
+    expect(lines[1]).toBe("sd:  ----|X---|----|---- [vol 60%] [muted]");
+    expect(lines[2]).toBe("bd:  X---|----|----|----");
   });
 });

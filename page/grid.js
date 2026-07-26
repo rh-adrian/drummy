@@ -53,6 +53,7 @@ export function gridModel(groove) {
         drum: voice.drum,
         label: DRUM_NAMES[voice.drum] ?? voice.drum,
         trackGain: voice.trackGain ?? 1,
+        muted: voice.muted ?? false,
         cells,
       };
     });

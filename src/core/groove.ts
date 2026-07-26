@@ -25,7 +25,12 @@ const voiceSchema = z.object({
     .refine((d) => DRUM_ABBRS.includes(d), {
       message: `unknown drum — valid drums are: ${DRUM_ABBRS.join(", ")}`,
     }),
-  hits: z.array(hitSchema).min(1, { message: "a voice needs at least one hit" }),
+  // Empty is legal (v1.6 D-40): a cleared channel keeps its row (and fader/
+  // mute state) — it just doesn't sound. removeDrums deletes the row entirely.
+  hits: z.array(hitSchema),
+  // Mute (v1.6 D-41): silent but everything kept — separate from trackGain so
+  // unmuting restores the exact mix.
+  muted: z.boolean().default(false),
   // Track volume (v1.5, D-35): a mix fader, NOT dynamics — multiplies the
   // compiled gain but never affects which velocity layer plays.
   trackGain: z

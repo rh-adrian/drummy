@@ -213,3 +213,22 @@ describe("trackGain (v1.5 FR-1)", () => {
     if (r.ok) expect(r.groove.voices[0].trackGain).toBe(1);
   });
 });
+
+describe("empty channels and mute (v1.6 FR-1/FR-2)", () => {
+  const base = { tempoBpm: 100, bank: "RolandTR808" };
+
+  it("accepts a voice with zero hits (cleared channel keeps its row, D-40)", () => {
+    const r = parseGroove({ ...base, voices: [{ drum: "hh", hits: [] }] });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.groove.voices[0].hits).toEqual([]);
+  });
+
+  it("defaults muted to false and round-trips muted: true", () => {
+    const off = parseGroove({ ...base, voices: [{ drum: "hh", hits: [{ step: 0 }] }] });
+    expect(off.ok).toBe(true);
+    if (off.ok) expect(off.groove.voices[0].muted).toBe(false);
+    const on = parseGroove({ ...base, voices: [{ drum: "hh", hits: [{ step: 0 }], muted: true }] });
+    expect(on.ok).toBe(true);
+    if (on.ok) expect(on.groove.voices[0].muted).toBe(true);
+  });
+});

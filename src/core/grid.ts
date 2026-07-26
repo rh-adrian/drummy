@@ -53,7 +53,7 @@ export function gridToVoices(grid: Record<string, string>, bars: number, resolut
       hits.push({ step, vel, micro: 0 });
     }
     // All-rest rows are placeholders (drum-tab convention) — skip, don't error.
-    if (hits.length > 0) voices.push({ drum, hits, trackGain: 1 });
+    if (hits.length > 0) voices.push({ drum, hits, trackGain: 1, muted: false });
   }
 
   if (voices.length === 0) {
@@ -85,10 +85,12 @@ export function renderGrid(groove: Groove): string {
         barsOut.push(beats.join("|"));
       }
       // Fixed 5-char prefix so rows align for any drum name length (max 3 + ":").
-      // Non-unity trackGain (v1.5 FR-6) is annotated so the LLM sees the mix.
+      // Non-unity trackGain (v1.5 FR-6) and mute (v1.6 FR-2) are annotated so
+      // the LLM sees the user's mixer state.
       const gain = voice.trackGain ?? 1;
       const vol = gain === 1 ? "" : ` [vol ${Math.round(gain * 100)}%]`;
-      return `${(voice.drum + ":").padEnd(5)}${barsOut.join("||")}${vol}`;
+      const muted = voice.muted ? " [muted]" : "";
+      return `${(voice.drum + ":").padEnd(5)}${barsOut.join("||")}${vol}${muted}`;
     });
 
   return rows.join("\n");

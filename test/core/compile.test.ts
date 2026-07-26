@@ -302,3 +302,51 @@ describe("compileGroove — trackGain (v1.5)", () => {
     expect(Number(gain[4])).toBeCloseTo(0.285); // played quietly
   });
 });
+
+describe("compileGroove — empty channels and mute (v1.6)", () => {
+  it("emits no stack entry for a hitless voice", () => {
+    const code = compileGroove(
+      groove({
+        tempoBpm: 100,
+        bank: "RolandTR808",
+        voices: [
+          { drum: "bd", hits: [{ step: 0 }] },
+          { drum: "hh", hits: [] },
+        ],
+      }),
+    );
+    expect((code.match(/s\("/g) ?? []).length).toBe(1);
+    expect(code).not.toContain("hh");
+  });
+
+  it("skips muted voices entirely (FR-2)", () => {
+    const code = compileGroove(
+      groove({
+        tempoBpm: 100,
+        bank: "RolandTR808",
+        voices: [
+          { drum: "bd", hits: [{ step: 0 }] },
+          { drum: "sd", hits: [{ step: 4 }], muted: true },
+        ],
+      }),
+    );
+    expect(code).not.toContain("sd");
+    expect(code).toContain("bd");
+  });
+
+  it("compiles to valid silence when nothing sounds (all empty or muted)", () => {
+    const code = compileGroove(
+      groove({
+        tempoBpm: 120,
+        bank: "RolandTR808",
+        voices: [
+          { drum: "bd", hits: [] },
+          { drum: "sd", hits: [{ step: 4 }], muted: true },
+        ],
+      }),
+    );
+    expect(code).toContain("setcpm(120/4)");
+    expect(code).toContain("silence");
+    expect(code).not.toContain("stack(");
+  });
+});
