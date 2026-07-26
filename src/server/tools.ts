@@ -146,7 +146,7 @@ const GRID_GUIDE =
   "Letters set velocity: X = accent (1.0), x = normal (0.7), o = soft (0.5), g = ghost (0.25); \"-\" or \".\" = rest; " +
   '"|" and spaces are cosmetic beat separators (each row needs bars × resolution real characters). ' +
   "Example — one bar of funk at resolution 16:\n" +
-  '  "hh": "x-x-|x-x-|x-x-|x-x-"\n' +
+  '  "hh": "X-x-|x-o-|X-x-|x-o-"\n' +
   '  "sd": "----|X--g|-g--|X---"\n' +
   '  "bd": "X---|--x-|----|-x--"\n' +
   "Columns are moments in time — read them vertically to SEE how kick, snare, and hats interlock. " +
@@ -334,7 +334,12 @@ export function createDrummerServer(
       let editVoices = (edits.voices ?? []) as unknown[];
       if (edits.grid) {
         const converted = gridToVoices(edits.grid, edits.bars ?? current.bars, edits.resolution ?? current.resolution);
-        if (!converted.ok) return err(`Invalid update — ${converted.error}. The groove is unchanged.`);
+        if (!converted.ok) {
+          // In an update, an all-rest grid usually means "silence this drum" —
+          // point at removeDrums instead of parroting the core error's advice.
+          const hint = converted.error.includes("no hits") ? " To silence a drum, list it in removeDrums instead." : "";
+          return err(`Invalid update — ${converted.error}.${hint} The groove is unchanged.`);
+        }
         editVoices = converted.voices;
       }
       const removed = new Set(edits.removeDrums ?? []);
@@ -477,7 +482,8 @@ export function createDrummerServer(
       title: "What's playing",
       description:
         "Current session state as JSON: whether a groove is playing, the groove itself, tempo, kit, and whether the " +
-        "browser page is connected. Read-only — call this to re-orient before editing.",
+        "browser page is connected — followed by the groove rendered in grid notation (play_groove's X/x/o/g rows). " +
+        "Read-only — call this to re-orient before editing, and prefer reading/editing the groove in the grid form.",
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },

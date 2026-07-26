@@ -1,23 +1,23 @@
 # Drummer v1.4 — Grid Notation & Groove Musicianship — Spec
 
-Status: in-progress
+Status: done
 Branch: main (straight-to-main per D-12)
 
 ## Context Restore
 
-M1 and M2 DONE 2026-07-26 (M1 commit c52e9fc). Core: src/core/grid.ts
-(gridToVoices + renderGrid), parseGroove accepts `grid` XOR `voices`; letters
-X/x/o/g = 1/0.7/0.5/0.25, O alias, all-rest rows skipped, fixed 5-char row
-prefix, "|" per beat, "||" between bars, snap midpoints 0.85/0.6/0.375. Tools:
-grid field on play_groove + update_groove (update converts rows with merged
-bars/resolution, replaces voices by drum; grid+voices or grid∩removeDrums →
-errors), play/update responses append renderGrid, now_playing appends
-"\n\nGrid:\n<render>" after the JSON (e2e + tests parse JSON via
-split("\n\nGrid:")[0]), play_groove description = GRID_GUIDE + MUSICIANSHIP +
-GROOVE_GUIDE. README/CLAUDE.md/IDEAS.md updated (GrooVAE humanizer parked,
-D-34). 158 unit tests green, e2e 29/29. REMAINING: live-jam smoke (driver
-relaunched on new build — watch it author in grid, Adrian ear-check), then
-M-final staff review → Status done.
+COMPLETE 2026-07-26 — all milestones done, M-final review PASS-WITH-FINDINGS and
+all findings addressed same day. Core: src/core/grid.ts (gridToVoices +
+renderGrid), parseGroove accepts `grid` XOR `voices`; letters X/x/o/g =
+1/0.7/0.5/0.25, O alias, all-rest rows skipped, "|" per beat, "||" between bars,
+snap midpoints 0.85/0.6/0.375, unknown drums sort last (matches page). Tools:
+grid on play_groove + update_groove, all three responses render grid,
+now_playing appends "\n\nGrid:\n<render>" after the JSON (parse sites split on
+the marker), teaching = GRID_GUIDE + MUSICIANSHIP + GROOVE_GUIDE. FR-7: page
+rows show full instrument names. Ear-verified: Adrian "sounds MUCHHH better"
+(Funky Drummer), then a live Low Rider jam iterated via grid updates (gallop
+hats, cha-cha open hat). 165 unit tests, e2e 29/29. Next spec: v1.5 UI upgrade
+(measure/beat visual segregation, per-track volume, accent/ghost cell editing —
+Adrian's request, intake pending).
 
 ## Overview
 
@@ -67,8 +67,10 @@ step-range guarantees of parseGroove hold for grid input too.
 FR-4 (round-trip): `now_playing`, `play_groove`, and `update_groove` responses
 render the current groove as grid text (rows sorted in page ROW_ORDER, beat
 separators every resolution/4 chars, `||` between bars). Velocities snap to the
-nearest of the four letters for display; the JSON groove stays in the response, so
-nothing is lost. Page cell edits (v1.2) show up in the next rendering.
+nearest of the four letters for display; now_playing keeps the full JSON groove in
+its response (play/update responses are summary + grid — exact vel/micro live in
+now_playing's JSON, wording tightened at M-final per finding N-2). Page cell edits
+(v1.2) show up in the next rendering.
 
 FR-5 (musicianship teaching): play_groove's description carries the notation
 manual (legend + a real 1-bar funk example with aligned rows) and a groove-craft
@@ -174,10 +176,22 @@ M1 = core links (grid.ts + groove.ts), M2 = tools + docs, M-final = review.
 - **Acceptance criteria:** zero unaddressed confirmed findings; accepted deviations
   recorded as D-*.
 - **Verification:** full suite + e2e green; review summarized to Adrian.
-- **Status:** pending
+- **Status:** done (2026-07-26 — PASS-WITH-FINDINGS: 1 MAJOR, 4 MINOR, 3 NIT;
+  M-1..M-5 fixed same day, N-1/N-2 recorded below, N-3 accepted as-is)
 
 ## Progress Log
 
+- 2026-07-26: M-final review PASS-WITH-FINDINGS; fixed same day: M-1 now_playing
+  description now points at the grid notation (+test); M-2 teaching/README example
+  hats now vary dynamics (X-x-|x-o-); M-3 unknown-drum sort aligned with page
+  (last, not first) + cross-module row-order sync test; M-4 tests for grid +
+  bars/resolution changes in one update (shrink rejects, grow succeeds); M-5
+  all-rest grid error in update_groove now points at removeDrums (+test).
+  Recorded, accepted as-is: N-1 empty-voices zod message wording changed to "a
+  voice list needs at least one voice" (no test pinned the old string); N-2 FR-4
+  wording tightened (play/update responses are summary + grid, full JSON lives in
+  now_playing); N-3 invisible-char errors quote the raw glyph (FR-2-conformant).
+  165 unit tests. Status → done.
 - 2026-07-26: Live-jam ear check PASSED — Adrian on the grid-notation Funky Drummer
   jam: "sounds MUCHHH better". Grid notation + musicianship teaching confirmed as
   the fix for stiff grooves.

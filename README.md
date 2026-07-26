@@ -82,7 +82,7 @@ carry velocity — `X` accent (1.0), `x` normal (0.7), `o` soft (0.5), `g` ghost
   "bars": 1,              // 1–4
   "resolution": 16,       // steps per bar: 8, 12, 16, 24, 32 (12/24 = triplet feels)
   "grid": {
-    "hh": "x-x-|x-x-|x-x-|x-x-",
+    "hh": "X-x-|x-o-|X-x-|x-o-",  // accents vary — uniform velocity sounds robotic
     "sd": "----|X--g|-g--|X---",   // backbeat + ghost notes
     "bd": "X---|--x-|----|-x--"
   }

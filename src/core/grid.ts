@@ -19,7 +19,8 @@ const RESTS = new Set(["-", "."]);
 const SEPARATORS = /[| ]/g;
 
 // Same visual order as the page grid (page/grid.js ROW_ORDER): cymbals on top,
-// kick at the bottom, like a drum chart. Kept in sync by test.
+// kick at the bottom, like a drum chart. A test in test/core/grid.test.ts
+// asserts renderGrid and the page's gridModel agree on row order.
 const ROW_ORDER = ["cr", "ch", "sp", "rd", "oh", "hh", "ht", "mt", "lt", "cb", "cp", "rim", "sd", "bd"];
 
 const LEGEND = 'X (accent) x (normal) o (soft) g (ghost), "-" or "." for rests, "|" as a cosmetic beat separator';
@@ -65,8 +66,13 @@ export function renderGrid(groove: Groove): string {
   const { bars, resolution } = groove;
   const beat = resolution / 4;
 
+  // Unknown drums sort last, matching page/grid.js (indexOf -1 would put them first).
+  const order = (drum: string) => {
+    const i = ROW_ORDER.indexOf(drum);
+    return i === -1 ? ROW_ORDER.length : i;
+  };
   const rows = [...groove.voices]
-    .sort((a, b) => ROW_ORDER.indexOf(a.drum) - ROW_ORDER.indexOf(b.drum))
+    .sort((a, b) => order(a.drum) - order(b.drum))
     .map((voice) => {
       const chars = new Array<string>(bars * resolution).fill("-");
       for (const hit of voice.hits) chars[hit.step] = nearestLetter(hit.vel);

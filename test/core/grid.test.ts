@@ -236,3 +236,20 @@ describe("parseGroove with grid input (FR-1)", () => {
     ]);
   });
 });
+
+describe("row order stays in sync with the page grid (M-final M-3)", () => {
+  it("renderGrid and page gridModel order all 14 drums identically", async () => {
+    const { gridModel } = await import("../../page/grid.js");
+    const { DRUM_ABBRS } = await import("../../src/core/kits.js");
+    const g = groove({
+      tempoBpm: 100,
+      bank: "Acoustic",
+      voices: DRUM_ABBRS.map((drum) => ({ drum, hits: [{ step: 0, vel: 0.7 }] })),
+    });
+    const renderOrder = renderGrid(g)
+      .split("\n")
+      .map((line) => line.split(":")[0].trim());
+    const pageOrder = gridModel(g).rows.map((r: { drum: string }) => r.drum);
+    expect(renderOrder).toEqual(pageOrder);
+  });
+});

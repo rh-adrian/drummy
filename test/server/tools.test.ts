@@ -685,3 +685,54 @@ describe("grid notation (v1.4)", () => {
     expect(update.description).toContain("grid");
   });
 });
+
+// M-final review fixes: FR-5 now_playing pointer, grid + bars/resolution edits.
+
+describe("grid notation review fixes (v1.4 M-final)", () => {
+  it("now_playing's description points back to the grid notation (FR-5, M-1)", async () => {
+    const { client } = await setup();
+    const tools = await client.listTools();
+    const np = tools.tools.find((t) => t.name === "now_playing")!;
+    expect(np.description).toContain("grid notation");
+    expect(np.description).toContain("X/x/o/g");
+  });
+
+  it("update_groove with a grid row and a shrinking resolution rejects out-of-range leftovers untouched (M-4)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const before = sidecar.pushes.length;
+    const res = (await client.callTool({
+      name: "update_groove",
+      arguments: { resolution: 8, grid: { hh: "Xx|Xx|Xx|Xx" } },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true); // bd still has step 12 — out of range at resolution 8
+    expect(text(res)).toContain("out of range");
+    expect(sidecar.pushes.length).toBe(before);
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.resolution).toBe(16);
+  });
+
+  it("update_groove with a grid row sized for grown bars succeeds (M-4)", async () => {
+    const { client } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const res = (await client.callTool({
+      name: "update_groove",
+      arguments: { bars: 2, grid: { hh: "x-x-|x-x-|x-x-|x-x-||o-o-|o-o-|o-o-|o-o-" } },
+    })) as CallToolResult;
+    expect(res.isError).toBeFalsy();
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.bars).toBe(2);
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits).toHaveLength(16);
+  });
+
+  it("an all-rest grid in update_groove points the model at removeDrums (M-5)", async () => {
+    const { client } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const res = (await client.callTool({
+      name: "update_groove",
+      arguments: { grid: { hh: "----|----|----|----" } },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("removeDrums");
+  });
+});
