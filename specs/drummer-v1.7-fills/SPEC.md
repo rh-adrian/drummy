@@ -1,6 +1,6 @@
 # Drummer v1.7 — Fills: Pre-Rendered Variations, Random Substitution — Spec
 
-Status: in-progress
+Status: done
 Branch: main (straight-to-main per D-12)
 
 ## Context Restore
@@ -110,6 +110,9 @@ undo-able, default true — Adrian asked for the UI toggle 2026-07-26.
 D-50: `fillChance` default 0.25, range 0.05–1 — "every once in a while" ≈
 every ~4th loop-end, jittered by the cycle-seeded rand; 1.0 exists mainly so
 e2e can force a fill every cycle deterministically.
+D-53: channel mute applies inside fills for that drum; fill-only drums bypass
+other channels' mutes; the fills toggle is the kill switch — M-final finding
+MINOR-3 accepted as designed behavior 2026-07-26, now taught and tested.
 D-52: master volume is server session state applied via .postgain, excluded
 from undo — 2026-07-26 (monitoring level, not musical content; survives new
 grooves from the LLM by design).
@@ -177,9 +180,26 @@ M1 = core. M2 = server + page + teaching + e2e. M-final = staff review.
   tested, D-46..D-50 followed, isolation held, undocumented deviations.
 - **Acceptance criteria:** zero unaddressed confirmed findings.
 - **Verification:** full suite + e2e green; review summarized to Adrian.
-- **Status:** pending
+- **Status:** done (2026-07-26 — PASS-WITH-FINDINGS, all fixed, see log)
 
 ## Progress Log
+
+- 2026-07-26: Combined v1.6+v1.7 M-final review (post-public-release bar):
+  PASS-WITH-FINDINGS — 0 blockers/majors, 5 MINOR, 7 NIT. Reviewer verified
+  wrandcat weight-0 semantics against the shipped @strudel/web 1.3.0 bundle
+  (0-weight base unselectable at fillChance 1) and confirmed licensing/README/
+  no-secrets hygiene. Fixed same day: MINOR-1 setLastEvaluate now carries
+  masterGain + origin (replayed slider/pause correctness, tested); MINOR-2
+  undo cap-20 + D-42 clearing on play/set_kit/set_tempo + tempo-edit undo all
+  tested; MINOR-3 mute×fills semantics recorded as D-53, taught, tested;
+  MINOR-4 rebrand completed (page title/h1, MCP server name "drummy",
+  package.json name/bin); MINOR-5 refused setTempo/setMasterGain now snap
+  clients back (tested). NIT-1 sidecar tests wrapped in describe; NIT-2
+  break-fill idea recorded in IDEAS.md; NIT-3 "(fills off)" summary tested.
+  Accepted as-is: NIT-4 fill row-length error wording, NIT-5 parsed-form fill
+  validation asymmetry (unreachable via authoring path), NIT-6 duplicated
+  setcpm regex in the page's paused branch, NIT-7 page-setTempo merge inline
+  in tools (matches the spec's architecture). 241 unit tests.
 
 - 2026-07-26: FR-7 added at Adrian's request, same day: master volume slider
   (🔊, 0-150%) in the transport. SESSION state on the server (not groove state

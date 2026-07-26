@@ -1,5 +1,5 @@
 {
-  "name": "ai-drummer",
+  "name": "drummy",
   "version": "0.1.0",
   "description": "An open-source AI drummer you can talk to and jam with \u2014 drummer-vocabulary MCP server driving Strudel drum-machine samples",
   "type": "module",
@@ -10,7 +10,7 @@
     "url": "https://github.com/rh-adrian/drummy.git"
   },
   "bin": {
-    "ai-drummer": "dist/index.js"
+    "drummy": "dist/index.js"
   },
   "files": [
     "dist",

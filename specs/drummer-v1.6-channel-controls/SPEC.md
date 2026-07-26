@@ -1,6 +1,6 @@
 # Drummer v1.6 — Channel Controls: Mute, Clear + Undo, UI Tempo, Pause Discipline — Spec
 
-Status: in-progress
+Status: done
 Branch: main (straight-to-main per D-12)
 
 ## Context Restore
@@ -182,7 +182,9 @@ M2 = server + page + teaching + e2e. M-final = staff review.
 - **Acceptance criteria:** zero unaddressed confirmed findings; accepted ones
   recorded as D-*.
 - **Verification:** full suite + e2e green; review summarized to Adrian.
-- **Status:** pending
+- **Status:** done (2026-07-26 — combined v1.6+v1.7 review: PASS-WITH-FINDINGS,
+  0 blocker/major, 5 MINOR + 7 NIT, all MINORs fixed same day; see v1.7 spec's
+  log for the shared disposition)
 
 ## Progress Log
 

@@ -46,3 +46,10 @@ GrooVAE (https://magenta.withgoogle.com/groovae), trained on the Groove MIDI Dat
 Their split matches our schema exactly: "score" = quantized steps, "groove" =
 velocity + micro-timing. Could also be a hand-rolled rule set (swing + accent
 contour + push/pull per genre) as a `humanize: 0-1` groove field — no ML dependency.
+
+## Break / silence fills (captured 2026-07-26, v1.7 M1 note)
+
+Grid fills currently require at least one hit ("grid has no hits at all" is an
+error). A deliberate all-rest fill = a dramatic full-band STOP at the loop end —
+musically legit (think James Brown hits). If wanted: allow an explicit
+`{"silence": true}` fill form rather than weakening the no-hits validation.

@@ -15,6 +15,7 @@ interface MockSidecar extends SidecarHandle {
   connected: boolean;
   replayCode: string | null;
   replayGroove: unknown;
+  replayExtras: { masterGain?: number; origin?: string } | null;
   editHandler: ((edit: { drum: string; step: number }) => void) | null;
 }
 
@@ -26,6 +27,7 @@ function mockSidecar(): MockSidecar {
     connected: true,
     replayCode: null,
     replayGroove: null,
+    replayExtras: null,
     editHandler: null,
     onEdit(handler) {
       self.editHandler = handler;
@@ -41,9 +43,10 @@ function mockSidecar(): MockSidecar {
         self.replayGroove = null;
       }
     },
-    setLastEvaluate(code: string, groove?: unknown) {
+    setLastEvaluate(code: string, groove?: unknown, extras?: { masterGain?: number; origin?: string }) {
       self.replayCode = code;
       self.replayGroove = groove ?? null;
+      self.replayExtras = extras ?? null;
     },
     pageConnected() {
       return self.connected;
@@ -1057,5 +1060,85 @@ describe("master volume (v1.7 FR-7)", () => {
     sidecar.editHandler!(edit({ kind: "setMasterGain", gain: 3 }));
     const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.masterGain).toBe(1);
+  });
+});
+
+describe("M-final review fixes (v1.6+v1.7)", () => {
+  const edit = (e: object) => e as never;
+
+  it("undo stack caps at 20 — the oldest snapshot falls off (NFR-3)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    // 21 fader edits at distinct values 0.30..0.50
+    for (let i = 0; i <= 20; i++) {
+      sidecar.editHandler!(edit({ kind: "setTrackGain", drum: "hh", gain: 0.3 + i / 100 }));
+    }
+    for (let i = 0; i < 20; i++) sidecar.editHandler!(edit({ kind: "undo" }));
+    let np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    // snapshot of the pre-edit-1 state (gain 1) was shifted off: we land on edit 1's value
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").trackGain).toBe(0.3);
+    const before = sidecar.pushes.length;
+    sidecar.editHandler!(edit({ kind: "undo" })); // stack exhausted
+    expect(sidecar.pushes.length).toBe(before);
+  });
+
+  it("play_groove, set_kit, and set_tempo all clear the undo stack (D-42)", async () => {
+    for (const llmCall of [
+      { name: "play_groove", arguments: { groove: { ...GROOVE, tempoBpm: 111 } } },
+      { name: "set_kit", arguments: { bank: "RolandTR808" } },
+      { name: "set_tempo", arguments: { bpm: 108 } },
+    ]) {
+      const { client, sidecar } = await setup();
+      await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+      sidecar.editHandler!(edit({ kind: "setTrackGain", drum: "hh", gain: 0.6 }));
+      await client.callTool(llmCall as never);
+      const before = sidecar.pushes.length;
+      sidecar.editHandler!(edit({ kind: "undo" }));
+      expect(sidecar.pushes.length, llmCall.name).toBe(before); // stack cleared → no-op
+    }
+  });
+
+  it("a page tempo edit is undo-able (FR-4 × FR-5)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!(edit({ kind: "setTempo", bpm: 130 }));
+    sidecar.editHandler!(edit({ kind: "undo" }));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.tempoBpm).toBe(96);
+  });
+
+  it("the replay after a tempo change carries masterGain and page origin (MINOR-1)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!(edit({ kind: "setMasterGain", gain: 0.5 }));
+    sidecar.editHandler!(edit({ kind: "setTempo", bpm: 130 }));
+    expect(sidecar.replayExtras).toEqual({ masterGain: 0.5, origin: "page" });
+    // LLM set_tempo carries the level but no page origin
+    await client.callTool({ name: "set_tempo", arguments: { bpm: 120 } });
+    expect(sidecar.replayExtras).toEqual({ masterGain: 0.5 });
+  });
+
+  it("refused setTempo and setMasterGain edits snap clients back (MINOR-5)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    for (const bad of [{ kind: "setTempo", bpm: 999 }, { kind: "setMasterGain", gain: 9 }]) {
+      const before = sidecar.pushes.length;
+      sidecar.editHandler!(edit(bad));
+      const push = sidecar.pushes.at(-1)!;
+      expect(sidecar.pushes.length).toBe(before + 1); // revert re-push
+      if (push.type === "evaluate") expect((push as { origin?: string }).origin).toBe("page");
+    }
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.tempoBpm).toBe(96);
+    expect(np.masterGain).toBe(1);
+  });
+
+  it("playingSummary reports fills off (NIT-3)", async () => {
+    const { client } = await setup();
+    const res = await client.callTool({
+      name: "play_groove",
+      arguments: { groove: { ...GROOVE, fills: [{ grid: { ht: "XxXx" } }], fillsEnabled: false } },
+    });
+    expect(text(res)).toContain("(fills off)");
   });
 });

@@ -180,3 +180,22 @@ describe("renderGrid fill sections (FR-5)", () => {
     expect(out).toContain("ht:  x-x-|x-g-");
   });
 });
+
+describe("fills × mute (M-final D-53)", () => {
+  it("a muted drum stays silent inside fills; fill-only drums bypass mutes", () => {
+    const code = compileGroove(
+      groove({
+        tempoBpm: 100,
+        bank: "RolandTR808",
+        voices: [
+          { drum: "bd", hits: [{ step: 0, vel: 1 }] },
+          { drum: "sd", hits: [{ step: 4, vel: 1 }], muted: true },
+        ],
+        fills: [{ grid: { sd: "XxXx", ht: "X-X-" } }],
+      }),
+    );
+    const variant = code.split("wrandcat(")[1].split("],")[1];
+    expect(variant).not.toContain("sd"); // muted base voice absorbs its fill hits
+    expect(variant).toContain("ht"); // fill-only drum plays at unity, unmuted
+  });
+});

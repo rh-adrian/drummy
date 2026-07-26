@@ -22,7 +22,7 @@ export interface SidecarHandle {
   port: number;
   url: string;
   push(msg: SidecarPush): void;
-  setLastEvaluate(code: string, groove?: Groove): void;
+  setLastEvaluate(code: string, groove?: Groove, extras?: { masterGain?: number; origin?: "page" | "llm" }): void;
   pageConnected(): boolean;
   lastStatus(): PageStatus | null;
   onEdit(handler: (edit: PageEdit) => void): void;
@@ -195,7 +195,8 @@ const FILL_GUIDE =
   "should keep ticking). Vary the intensity: a couple subtle (snare ghost runs, an open-hat lift), a couple big " +
   "(descending tom rounds ht→mt→lt, flam accents). Build INTO the next downbeat — the crash on the 1 belongs to " +
   "the base groove's step 0, not the fill. fillChance sets how often one fires (default 0.25); selection is " +
-  "seeded per-cycle so it never repeats periodically. The user can toggle fills off on the page. ";
+  "seeded per-cycle so it never repeats periodically. A muted channel stays muted inside fills (fill-only drums " +
+  "are unaffected by other channels' mutes); the user's page toggle is the fills kill switch. ";
 
 const GROOVE_GUIDE =
   "A groove is a bar grid: `resolution` steps per bar (16 = 16th notes) times `bars` (1-4). Drums: " +
@@ -218,7 +219,7 @@ export function createDrummerServer(
   options: DrummerOptions = {},
 ): McpServer {
   const server = new McpServer(
-    { name: "ai-drummer", version: "0.1.0" },
+    { name: "drummy", version: "0.1.0" },
     {
       instructions:
         "AI drummer: author grooves from your own song/genre knowledge and play them through real drum-machine samples " +
@@ -271,6 +272,8 @@ export function createDrummerServer(
       if (edit.kind === "setMasterGain") {
         if (!Number.isFinite(edit.gain) || edit.gain < 0 || edit.gain > 1.5) {
           console.error(`[drummer] refused page edit ${what}: master gain must be between 0 and 1.5`);
+          // Snap any client's optimistic slider back to reality (MINOR-5).
+          if (playing) sidecar.push(evalPush(groove, "page"));
           return;
         }
         masterGain = edit.gain;
@@ -295,13 +298,15 @@ export function createDrummerServer(
         // set_tempo semantics (D-44): no restart, bar phase kept.
         if (!Number.isFinite(edit.bpm) || edit.bpm < 40 || edit.bpm > 300) {
           console.error(`[drummer] refused page edit ${what}: bpm must be between 40 and 300`);
+          // Snap any client's optimistic input back to reality (MINOR-5).
+          if (playing) sidecar.push(evalPush(groove, "page"));
           return;
         }
         undoSnapshot(groove);
         groove = { ...groove, tempoBpm: edit.bpm };
         if (playing) {
           sidecar.push({ type: "setCps", cps: edit.bpm / 240 });
-          sidecar.setLastEvaluate(compileGroove(groove, { masterGain }), groove);
+          sidecar.setLastEvaluate(compileGroove(groove, { masterGain }), groove, { masterGain, origin: "page" });
         }
         return;
       }
@@ -533,7 +538,7 @@ export function createDrummerServer(
       // Keep the replayed evaluate's setcpm (and grid groove) in sync so a page
       // that reloads comes back at the new tempo, not the one baked into the
       // old code.
-      live.setLastEvaluate(compileGroove(groove, { masterGain }), groove);
+      live.setLastEvaluate(compileGroove(groove, { masterGain }), groove, { masterGain });
       clearUndo(); // D-42
       return ok(`Tempo is now ${bpm} BPM.`);
     },

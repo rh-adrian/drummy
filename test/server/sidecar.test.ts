@@ -56,7 +56,7 @@ describe("startSidecar", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     const body = await res.text();
-    expect(body).toContain("AI Drummer");
+    expect(body).toContain("Drummy");
   });
 
   it("serves page assets with correct content types", async () => {
@@ -247,6 +247,7 @@ describe("startSidecar", () => {
     ws.close();
   });
 
+describe("page-edit routing (v1.5–v1.7)", () => {
   it("routes cell-edit frames (cycleStep + legacy toggleStep) to the onEdit handler", async () => {
     const s = await start();
     const edits: unknown[] = [];
@@ -364,3 +365,4 @@ describe("startSidecar", () => {
     expect(await client.next()).toEqual({ type: "evaluate", code: "$: silence", masterGain: 0.5 });
     client.ws.close();
   });
+});

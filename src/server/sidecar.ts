@@ -49,7 +49,7 @@ export interface Sidecar {
    * delivered live another way (set_tempo pushes setCps to running pages, but
    * a reloading page must replay code with the new setcpm, not the stale one).
    */
-  setLastEvaluate(code: string, groove?: Groove): void;
+  setLastEvaluate(code: string, groove?: Groove, extras?: { masterGain?: number; origin?: "page" | "llm" }): void;
   /** True while at least one page has sent a status heartbeat recently (guards against half-open sockets). */
   pageConnected(): boolean;
   lastStatus(): PageStatus | null;
@@ -226,8 +226,11 @@ export async function startSidecar(
         if (ws.readyState === WebSocket.OPEN) ws.send(data);
       }
     },
-    setLastEvaluate(code, groove) {
-      lastEvaluate = { type: "evaluate", code, ...(groove ? { groove } : {}) };
+    setLastEvaluate(code, groove, extras) {
+      // Carry session extras (v1.7 MINOR-1): a reloading page's master slider
+      // must reflect the server's level, and a paused page's replay after a
+      // page-originated tempo change must not un-pause it.
+      lastEvaluate = { type: "evaluate", code, ...(groove ? { groove } : {}), ...(extras ?? {}) };
       lastCps = null;
       hushed = false;
     },
