@@ -170,7 +170,7 @@ teaching + e2e. M-final = staff review.
 - **Isolation note:** protocol addition is a new message type (old pages ignore
   nothing — they never send it); toggleStep→cycleStep swap is server-internal;
   responses only gain [vol] text.
-- **Status:** pending
+- **Status:** done (2026-07-26; Adrian's live fader/cycle check pending, see log)
 
 ### M-final: Staff-level peer review
 - **Scope:** full v1.5 diff + this SPEC.md
@@ -182,6 +182,19 @@ teaching + e2e. M-final = staff review.
 - **Status:** pending
 
 ## Progress Log
+
+- 2026-07-26: M2 done — sidecar PageEdit is now a discriminated union
+  (cycleStep/setTrackGain; legacy "toggleStep" frames get cycle semantics so
+  stale tabs keep working), tools.ts routes both merges + D-38 preservation in
+  update_groove (grid replacements always keep the fader; JSON replacements
+  keep it unless trackGain explicit), teaching text (trackGain doc + count
+  vocabulary with worked example), page header/bar rows + faders + cycle
+  clicks + layered separators. 190 unit tests. e2e now 32 checks (v1.2 toggle
+  checks replaced by v1.5 cycle checks, RELOCATED from phase C to D1 — four
+  cycle round-trips no longer fit before the rateC DSP window; D1 is safe
+  because D2 re-anchors its own measurement). Deviations: cycleNext page
+  helper landed in M2 not M1 (trivial); v1.2 tools/e2e click tests updated to
+  cycle expectations (intentional, D-36).
 
 - 2026-07-26: M1 done — trackGain (schema/compile/renderGrid [vol N%]),
   cycleStep + setTrackGain pure merges, countHeader + gridModel.trackGain.

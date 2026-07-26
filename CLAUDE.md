@@ -24,7 +24,9 @@ src/server/     sidecar.ts (HTTP static + WS push)  tools.ts (the 7 MCP tools)
 src/index.ts    stdio entry: McpServer + sidecar lifecycle
 page/           browser client: @strudel/web via CDN, bar-quantized swaps, heartbeat,
                 step-grid display + playhead (grid.js pure math), local play/pause,
-                click-to-toggle steps (server owns the merge — src/core/edit.ts),
+                click-to-cycle steps (off→x→X→g, v1.5) + per-track volume faders
+                (trackGain) + drummer's count header (server owns every merge —
+                src/core/edit.ts),
                 acoustic.json (Salamander sample index — velocity-layered Acoustic
                 bank; regenerate with scripts/build-acoustic-map.ts)
 scripts/        dev-jam.ts (no-MCP dev loop)  capture.ts + e2e.ts (audio verification)

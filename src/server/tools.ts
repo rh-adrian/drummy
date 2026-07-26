@@ -6,7 +6,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { parseGroove, type Groove } from "../core/groove.js";
 import { gridToVoices, renderGrid } from "../core/grid.js";
 import { compileGroove } from "../core/compile.js";
-import { toggleStep } from "../core/edit.js";
+import { cycleStep, setTrackGain } from "../core/edit.js";
 import { BANKS, BANK_NAMES, DRUMS, DRUM_ABBRS } from "../core/kits.js";
 import type { PageEdit, PageStatus, SidecarPush } from "./sidecar.js";
 
@@ -97,6 +97,14 @@ const voiceShape = z
   .object({
     drum: z.string().optional().describe(`Drum voice. One of: ${DRUM_ABBRS.join(", ")}. REQUIRED.`),
     hits: z.array(hitShape).optional().describe("The hits for this drum, one per step max. REQUIRED."),
+    trackGain: z
+      .number()
+      .optional()
+      .describe(
+        "Track volume fader, 0-1.5 (0 = mute, 1 = unity, >1 = boost). MIX, not dynamics — velocity still picks the " +
+          "sample layer. Users set this with the page's sliders; it persists across your voice edits, so leave it " +
+          "alone unless asked to change the mix. Default 1.",
+      ),
   })
   .passthrough();
 
@@ -164,7 +172,11 @@ const MUSICIANSHIP =
 const GROOVE_GUIDE =
   "A groove is a bar grid: `resolution` steps per bar (16 = 16th notes) times `bars` (1-4). Drums: " +
   `${DRUM_ABBRS.join(", ")}. In 4/4 at resolution 16: beats fall on steps 0/4/8/12 (grid columns 1/5/9/13), backbeat ` +
-  "snare on steps 4 and 12, 8th-note hats on even steps, 16th hats on every step. `swing` (0-0.6) delays every odd " +
+  "snare on steps 4 and 12, 8th-note hats on even steps, 16th hats on every step. The user's page shows a drummer's " +
+  'count header (1 e & a 2 e & a …), so they may name spots that way: within a beat "e"=+1, "&"=+2, "a"=+3 sixteenths; ' +
+  'step = (bar-1)*resolution + (beat-1)*resolution/4 + offset — e.g. "the & of 3 in bar 2" at resolution 16 is step 26. ' +
+  "Rows tagged [vol N%] carry the user's mix fader (trackGain) — respect it. " +
+  "`swing` (0-0.6) delays every odd " +
   "step by that fraction of a step (0.1-0.2 subtle shuffle, ~0.33 hard triplet swing). " +
   VELOCITY_GUIDE +
   " Genre sketches: funk = syncopated bd, sd backbeat + ghosts on 16th offsets, 16th hh with accent pattern; " +
@@ -191,24 +203,28 @@ export function createDrummerServer(
   let groove: Groove | null = null;
   let playing = false;
 
-  // Grid click-edits from the page (v1.2): the human and the LLM share this
-  // session groove, so now_playing/update_groove see clicks automatically.
+  // Page edits (v1.2 clicks, v1.5 cycle + faders): the human and the LLM share
+  // this session groove, so now_playing/update_groove see them automatically.
   if (!isUnavailable(sidecar)) {
-    sidecar.onEdit(({ drum, step }) => {
+    sidecar.onEdit((edit) => {
+      const what = edit.kind === "cycleStep" ? `${edit.drum}@${edit.step}` : `${edit.drum} vol ${edit.gain}`;
       if (!groove) {
-        console.error(`[drummer] ignored grid edit ${drum}@${step}: no groove loaded`);
+        console.error(`[drummer] ignored page edit ${what}: no groove loaded`);
         return;
       }
-      const res = toggleStep(groove, drum, step);
+      const res =
+        edit.kind === "cycleStep"
+          ? cycleStep(groove, edit.drum, edit.step)
+          : setTrackGain(groove, edit.drum, edit.gain);
       if (!res.ok) {
-        console.error(`[drummer] refused grid edit ${drum}@${step}: ${res.reason}`);
-        // Snap the page's optimistic cell back to reality (FR-4).
+        console.error(`[drummer] refused page edit ${what}: ${res.reason}`);
+        // Snap the page's optimistic state back to reality (FR-4).
         if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove });
         return;
       }
       groove = res.groove;
-      // Never resurrect playback from a click while stopped (D-21) — the edit
-      // just waits in state for the next play/update.
+      // Never resurrect playback from an edit while stopped (D-21) — it just
+      // waits in state for the next play/update.
       if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove });
     });
   }
@@ -342,6 +358,17 @@ export function createDrummerServer(
         }
         editVoices = converted.voices;
       }
+      // D-38: a replacement that doesn't explicitly set trackGain keeps the
+      // voice's current fader (grid rows can never express one, so a grid
+      // replacement always keeps it) — the user's mix survives LLM edits.
+      const currentByDrum = new Map(current.voices.map((v) => [v.drum, v]));
+      editVoices = editVoices.map((v0) => {
+        const v = v0 as { drum?: string; trackGain?: number };
+        const prev = v.drum ? currentByDrum.get(v.drum) : undefined;
+        if (!prev) return v0;
+        const explicit = edits.grid ? undefined : v.trackGain;
+        return { ...(v0 as object), trackGain: explicit ?? prev.trackGain };
+      });
       const removed = new Set(edits.removeDrums ?? []);
       const replacements = new Map(editVoices.map((v) => [(v as { drum: string }).drum, v]));
       const voices: unknown[] = current.voices

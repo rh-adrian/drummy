@@ -24,11 +24,10 @@ export interface PageStatus {
   [key: string]: unknown;
 }
 
-/** Page → server grid edit request (v1.2 FR-1). */
-export interface PageEdit {
-  drum: string;
-  step: number;
-}
+/** Page → server edit requests: cell cycle (v1.2/v1.5) and track fader (v1.5 FR-3). */
+export type PageEdit =
+  | { kind: "cycleStep"; drum: string; step: number }
+  | { kind: "setTrackGain"; drum: string; gain: number };
 
 export interface Sidecar {
   port: number;
@@ -170,10 +169,14 @@ export async function startSidecar(
       if (msg && typeof msg === "object" && (msg as PageStatus).type === "status") {
         lastStatus = msg as PageStatus;
         pageSockets.set(ws, Date.now());
-      } else if (msg && typeof msg === "object" && (msg as { type?: unknown }).type === "toggleStep") {
-        const { drum, step } = msg as { drum?: unknown; step?: unknown };
-        if (typeof drum === "string" && typeof step === "number") {
-          editHandler?.({ drum, step });
+      } else if (msg && typeof msg === "object") {
+        const { type, drum, step, gain } = msg as { type?: unknown; drum?: unknown; step?: unknown; gain?: unknown };
+        // "toggleStep" is the pre-v1.5 page's name for a cell click; it gets
+        // cycle semantics now (D-36) so stale tabs keep working.
+        if ((type === "cycleStep" || type === "toggleStep") && typeof drum === "string" && typeof step === "number") {
+          editHandler?.({ kind: "cycleStep", drum, step });
+        } else if (type === "setTrackGain" && typeof drum === "string" && typeof gain === "number") {
+          editHandler?.({ kind: "setTrackGain", drum, gain });
         }
       }
     });

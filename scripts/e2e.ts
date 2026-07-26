@@ -125,7 +125,7 @@ async function main() {
   // v1.1 FR-2/FR-4: the grid shows the groove (4 rows, every hit lit), and the
   // code details stay collapsed when groove data is present.
   const grid = (await page.evaluate(`(() => ({
-    rows: document.querySelectorAll("#grid .grid-row").length,
+    rows: document.querySelectorAll("#grid .grid-row:not(.count-row):not(.bar-row)").length,
     hits: document.querySelectorAll("#grid .grid-cell.hit").length,
     grooveVoices: window.__ai.state.groove ? window.__ai.state.groove.voices.length : 0,
     codeOpen: document.querySelector("#codebox").open,
@@ -134,6 +134,22 @@ async function main() {
     "grid renders the groove",
     grid.rows === 4 && grid.hits >= 15 && grid.grooveVoices === 4 && !grid.codeOpen,
     JSON.stringify(grid),
+  );
+
+  // v1.5 FR-5: the drummer's count header labels every step, and FR-3: every
+  // voice row carries a track fader.
+  const headerInfo = (await page.evaluate(`(() => {
+    const cells = [...document.querySelectorAll("#grid .count-row .count-cell")];
+    return {
+      countCells: cells.length,
+      firstBeat: cells.slice(0, 4).map((c) => c.textContent).join(" "),
+      sliders: document.querySelectorAll("#grid .track-vol").length,
+    };
+  })()`)) as { countCells: number; firstBeat: string; sliders: number };
+  check(
+    "count header + track faders render (v1.5)",
+    headerInfo.countCells === 16 && headerInfo.firstBeat === "1 e & a" && headerInfo.sliders === 4,
+    JSON.stringify(headerInfo),
   );
 
   // v1.1 FR-3: playhead sweeps while playing.
@@ -162,34 +178,10 @@ async function main() {
     `playing=${np1.playing} tempo=${np1.tempoBpm} bank=${np1.bank}`,
   );
 
-  // v1.2 FR-5: clicking a grid cell toggles the step on the SERVER's groove.
-  // Placed at the top of phase C, BEFORE the rateC DSP window opens at
-  // marks.tempo+2200 — the transient oh hit must not sit inside a measured
-  // window (it flaked the rateB/rateC comparison when it did).
-  // The oh row has a hit only at 14 — click step 1 on, then off again.
-  const ohCell = `#grid .grid-cell[data-drum="oh"][data-step="1"]`;
-  await page.click(ohCell);
-  await sleep(400); // WS round trip; server state updates immediately
-  const optimistic = (await page.evaluate(
-    `document.querySelector('${ohCell}').classList.contains("hit")`,
-  )) as boolean;
-  const npEdit = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
-  const ohHits = (d: { groove: { voices: Array<{ drum: string; hits: Array<{ step: number; vel: number }> }> } }) =>
-    d.groove.voices.find((v) => v.drum === "oh")!.hits;
-  const added = ohHits(npEdit).find((h) => h.step === 1);
-  check(
-    "grid click adds the step to the session groove (v1.2)",
-    optimistic && added !== undefined && added.vel === 0.8,
-    `optimistic=${optimistic}, server hit=${JSON.stringify(added)}`,
-  );
-  await page.click(ohCell);
-  await sleep(400);
-  const npEdit2 = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
-  check(
-    "second click removes it again (v1.2)",
-    ohHits(npEdit2).every((h) => h.step !== 1),
-    `oh steps: ${ohHits(npEdit2).map((h) => h.step).join(",")}`,
-  );
+  // Cell clicks became a 4-state cycle in v1.5 (D-36) — 4 clicks with WS
+  // round-trips no longer fit before the rateC window opens at
+  // marks.tempo+2200, so the click checks moved to phase D1 (still before
+  // D2's measurement anchor).
 
   await sleep(5800); // ~3 bars at 125
 
@@ -218,6 +210,44 @@ async function main() {
     `["cb","ch","sp"].map((d) => !!document.querySelector('#grid .grid-cell[data-drum="' + d + '"]')).join(",")`,
   )) as string;
   check("grid shows the v1.3 voices (cb/ch/sp)", newRows === "true,true,true", `cb,ch,sp present: ${newRows}`);
+
+  // v1.5 FR-4: a cell click CYCLES off -> 0.7 -> 1.0 -> 0.25 -> off on the
+  // SERVER's groove. Safe here: D2's play_groove below replaces this groove
+  // and its DSP window is anchored after its own mark.
+  const cbCell = `#grid .grid-cell[data-drum="cb"][data-step="1"]`;
+  const cbVel = (d: { groove: { voices: Array<{ drum: string; hits: Array<{ step: number; vel: number }> }> } }) =>
+    d.groove.voices.find((v) => v.drum === "cb")!.hits.find((h) => h.step === 1)?.vel ?? null;
+  await page.click(cbCell);
+  await sleep(400); // WS round trip; server state updates immediately
+  const npCycle1 = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
+  check("cell click adds a normal-tier hit (v1.5 cycle)", cbVel(npCycle1) === 0.7, `vel=${cbVel(npCycle1)}`);
+  await page.click(cbCell);
+  await sleep(400);
+  const npCycle2 = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
+  check("second click stresses it (v1.5 cycle)", cbVel(npCycle2) === 1, `vel=${cbVel(npCycle2)}`);
+  await page.click(cbCell);
+  await sleep(400);
+  await page.click(cbCell);
+  await sleep(400);
+  const npCycle4 = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
+  check("fourth click cycles it off through ghost (v1.5 cycle)", cbVel(npCycle4) === null, `vel=${cbVel(npCycle4)}`);
+
+  // v1.5 FR-3: releasing a track fader lands trackGain in the SERVER's groove
+  // and the LLM sees [vol N%] in the rendering.
+  await page.evaluate(`(() => {
+    const s = document.querySelector('.track-vol[data-drum="cb"]');
+    s.value = 50;
+    s.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
+  await sleep(400);
+  const npVolText = textOf(await call("now_playing"));
+  const npVol = JSON.parse(npVolText.split("\n\nGrid:")[0]);
+  const cbGain = npVol.groove.voices.find((v: { drum: string }) => v.drum === "cb").trackGain;
+  check(
+    "track fader sets trackGain and renders [vol 50%] (v1.5)",
+    cbGain === 0.5 && npVolText.includes("[vol 50%]"),
+    `trackGain=${cbGain}`,
+  );
 
   // D2: velocity ramp, sd ONLY, loud→soft so each hit's long tail decays
   // before anything quieter follows: FF (1.0) → F (0.7) → MP (0.4) → ghost

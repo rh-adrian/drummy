@@ -86,6 +86,26 @@ export function countHeader(bars, resolution) {
   return cells;
 }
 
+// Click-cycle preview (v1.5 FR-4) — mirrors the server's cycleStep tiers so the
+// optimistic cell state matches what the broadcast will confirm.
+const CYCLE_TIERS = [0.25, 0.7, 1];
+
+/**
+ * The velocity one click ahead of `vel` (null = empty cell → 0.7; ghost → null).
+ * @param {number|null} vel
+ * @returns {number|null}
+ */
+export function cycleNext(vel) {
+  if (vel === null || vel === undefined) return 0.7;
+  let tier = CYCLE_TIERS[0];
+  for (const t of CYCLE_TIERS) {
+    if (Math.abs(vel - t) < Math.abs(vel - tier)) tier = t;
+  }
+  if (tier === 0.7) return 1;
+  if (tier === 1) return 0.25;
+  return null;
+}
+
 /**
  * Which step the playhead is on right now. One Strudel cycle = one bar (D-11)
  * and compiled grooves run under .slow(bars), so the pattern position is the

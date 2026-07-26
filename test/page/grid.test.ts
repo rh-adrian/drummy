@@ -172,3 +172,15 @@ describe("gridModel trackGain (v1.5)", () => {
     expect(gains).toEqual({ bd: 0.6, sd: 1 });
   });
 });
+
+describe("cycleNext (v1.5 FR-4: optimistic click preview)", () => {
+  it("mirrors the server cycle: off → 0.7 → 1 → 0.25 → off, snapping odd vels", async () => {
+    const { cycleNext } = await import("../../page/grid.js");
+    expect(cycleNext(null)).toBe(0.7);
+    expect(cycleNext(0.7)).toBe(1);
+    expect(cycleNext(1)).toBe(0.25);
+    expect(cycleNext(0.25)).toBe(null);
+    expect(cycleNext(0.5)).toBe(1); // snaps to 0.7 tier, then advances
+    expect(cycleNext(0.9)).toBe(0.25); // snaps to 1.0 tier
+  });
+});

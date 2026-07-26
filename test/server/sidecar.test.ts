@@ -247,17 +247,34 @@ describe("startSidecar", () => {
     ws.close();
   });
 
-  it("routes toggleStep frames from a page to the onEdit handler (v1.2 FR-1)", async () => {
+  it("routes cell-edit frames (cycleStep + legacy toggleStep) to the onEdit handler", async () => {
     const s = await start();
-    const edits: Array<{ drum: string; step: number }> = [];
+    const edits: unknown[] = [];
     s.onEdit((e) => edits.push(e));
     const { ws } = await connect(PORT);
-    ws.send(JSON.stringify({ type: "toggleStep", drum: "hh", step: 5 }));
-    ws.send(JSON.stringify({ type: "toggleStep", drum: "bd" })); // malformed: no step
-    ws.send(JSON.stringify({ type: "toggleStep", drum: 7, step: 1 })); // malformed drum
+    ws.send(JSON.stringify({ type: "cycleStep", drum: "hh", step: 5 }));
+    ws.send(JSON.stringify({ type: "toggleStep", drum: "sd", step: 4 })); // legacy name, same edit
+    ws.send(JSON.stringify({ type: "cycleStep", drum: "bd" })); // malformed: no step
+    ws.send(JSON.stringify({ type: "cycleStep", drum: 7, step: 1 })); // malformed drum
     ws.send(JSON.stringify({ type: "status", playing: true })); // unrelated
     await new Promise((r) => setTimeout(r, 80));
-    expect(edits).toEqual([{ drum: "hh", step: 5 }]);
+    expect(edits).toEqual([
+      { kind: "cycleStep", drum: "hh", step: 5 },
+      { kind: "cycleStep", drum: "sd", step: 4 },
+    ]);
+    ws.close();
+  });
+
+  it("routes setTrackGain frames to the onEdit handler (v1.5 FR-3)", async () => {
+    const s = await start();
+    const edits: unknown[] = [];
+    s.onEdit((e) => edits.push(e));
+    const { ws } = await connect(PORT);
+    ws.send(JSON.stringify({ type: "setTrackGain", drum: "cb", gain: 0.6 }));
+    ws.send(JSON.stringify({ type: "setTrackGain", drum: "cb" })); // malformed: no gain
+    ws.send(JSON.stringify({ type: "setTrackGain", drum: "cb", gain: "loud" })); // malformed gain
+    await new Promise((r) => setTimeout(r, 80));
+    expect(edits).toEqual([{ kind: "setTrackGain", drum: "cb", gain: 0.6 }]);
     ws.close();
   });
 

@@ -422,28 +422,29 @@ describe("list_kits", () => {
   });
 });
 
-describe("page grid edits (v1.2)", () => {
-  it("adds a hit at vel 0.8 while playing and pushes the new evaluate", async () => {
+describe("page grid edits (v1.2, cycle semantics since v1.5 D-36)", () => {
+  const cycle = (drum: string, step: number) => ({ kind: "cycleStep", drum, step }) as never;
+
+  it("adds a hit at vel 0.7 (normal tier) while playing and pushes the new evaluate", async () => {
     const { client, sidecar } = await setup();
     await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
-    sidecar.editHandler!({ drum: "hh", step: 6 });
+    sidecar.editHandler!(cycle("hh", 6));
     expect(sidecar.pushes).toHaveLength(2);
     const push = sidecar.pushes[1];
     expect(push.type).toBe("evaluate");
     if (push.type === "evaluate") {
       const hh = (push.groove as { voices: Array<{ drum: string; hits: Array<{ step: number; vel: number }> }> })
         .voices.find((v) => v.drum === "hh")!;
-      expect(hh.hits.find((h) => h.step === 6)!.vel).toBe(0.8);
+      expect(hh.hits.find((h) => h.step === 6)!.vel).toBe(0.7);
     }
     const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.map((h: { step: number }) => h.step)).toContain(6);
   });
 
-  it("removes a hit on second toggle", async () => {
+  it("removes a hit after cycling normal, stress, and ghost (4th click)", async () => {
     const { client, sidecar } = await setup();
     await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
-    sidecar.editHandler!({ drum: "hh", step: 6 });
-    sidecar.editHandler!({ drum: "hh", step: 6 });
+    for (let i = 0; i < 4; i++) sidecar.editHandler!(cycle("hh", 6));
     const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.map((h: { step: number }) => h.step)).not.toContain(6);
   });
@@ -453,7 +454,7 @@ describe("page grid edits (v1.2)", () => {
     await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
     await client.callTool({ name: "stop", arguments: {} });
     const pushCount = sidecar.pushes.length;
-    sidecar.editHandler!({ drum: "hh", step: 6 });
+    sidecar.editHandler!(cycle("hh", 6));
     expect(sidecar.pushes).toHaveLength(pushCount);
     const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.playing).toBe(false);
@@ -464,7 +465,7 @@ describe("page grid edits (v1.2)", () => {
     const { client, sidecar } = await setup();
     await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
     const before = stateJson(await client.callTool({ name: "now_playing", arguments: {} })).groove;
-    sidecar.editHandler!({ drum: "cr", step: 0 }); // no cr row in the groove
+    sidecar.editHandler!(cycle("cr", 0)); // no cr row in the groove
     const push = sidecar.pushes[sidecar.pushes.length - 1];
     expect(sidecar.pushes).toHaveLength(2); // revert push
     if (push.type === "evaluate") expect(push.groove).toEqual(before);
@@ -474,14 +475,14 @@ describe("page grid edits (v1.2)", () => {
 
   it("ignores edits when no groove is loaded", async () => {
     const { sidecar } = await setup();
-    sidecar.editHandler!({ drum: "hh", step: 0 });
+    sidecar.editHandler!(cycle("hh", 0));
     expect(sidecar.pushes).toHaveLength(0);
   });
 
   it("update_groove merges on top of a human edit (FR-6)", async () => {
     const { client, sidecar } = await setup();
     await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
-    sidecar.editHandler!({ drum: "hh", step: 6 });
+    sidecar.editHandler!(cycle("hh", 6));
     await client.callTool({ name: "update_groove", arguments: { tempoBpm: 110 } });
     const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.tempoBpm).toBe(110);
@@ -734,5 +735,79 @@ describe("grid notation review fixes (v1.4 M-final)", () => {
     })) as CallToolResult;
     expect(res.isError).toBe(true);
     expect(text(res)).toContain("removeDrums");
+  });
+});
+
+// --------------------------------------------------------------------------
+// v1.5: track volume + cycle edits through the shared-groove pipeline
+// --------------------------------------------------------------------------
+
+describe("track volume and cycle edits (v1.5)", () => {
+  it("a page setTrackGain edit scales the compiled gains and shows as [vol] (FR-3/FR-6)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!({ kind: "setTrackGain", drum: "hh", gain: 0.6 } as never);
+    const push = sidecar.pushes.at(-1)!;
+    expect(push.type).toBe("evaluate");
+    if (push.type === "evaluate") {
+      const g = push.groove as { voices: Array<{ drum: string; trackGain?: number }> };
+      expect(g.voices.find((v) => v.drum === "hh")!.trackGain).toBe(0.6);
+      expect(push.code).toContain("0.42"); // hh step 0: vel 0.7 × 0.6
+    }
+    const np = await client.callTool({ name: "now_playing", arguments: {} });
+    expect(text(np)).toContain("[vol 60%]");
+  });
+
+  it("a page cycleStep edit advances the cell through the velocity tiers (FR-4)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    // sd step 4 was written at default vel 1 (stress tier) → one click = ghost
+    sidecar.editHandler!({ kind: "cycleStep", drum: "sd", step: 4 } as never);
+    const push = sidecar.pushes.at(-1)!;
+    expect(push.type).toBe("evaluate");
+    if (push.type === "evaluate") {
+      const g = push.groove as { voices: Array<{ drum: string; hits: Array<{ step: number; vel: number }> }> };
+      expect(g.voices.find((v) => v.drum === "sd")!.hits.find((h) => h.step === 4)!.vel).toBe(0.25);
+    }
+  });
+
+  it("update_groove voice replacement preserves the user's trackGain (FR-2/D-38)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!({ kind: "setTrackGain", drum: "hh", gain: 0.6 } as never);
+    await client.callTool({
+      name: "update_groove",
+      arguments: { voices: [{ drum: "hh", hits: [{ step: 0 }, { step: 4 }] }] },
+    });
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").trackGain).toBe(0.6);
+  });
+
+  it("grid-row replacement also preserves trackGain, explicit trackGain wins (FR-2)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!({ kind: "setTrackGain", drum: "hh", gain: 0.6 } as never);
+    await client.callTool({
+      name: "update_groove",
+      arguments: { grid: { hh: "x-x-|x-x-|x-x-|x-x-" } },
+    });
+    let np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").trackGain).toBe(0.6);
+
+    await client.callTool({
+      name: "update_groove",
+      arguments: { voices: [{ drum: "hh", hits: [{ step: 0 }], trackGain: 1.2 }] },
+    });
+    np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").trackGain).toBe(1.2);
+  });
+
+  it("teaches trackGain and the count vocabulary (FR-6)", async () => {
+    const { client } = await setup();
+    const tools = await client.listTools();
+    const play = tools.tools.find((t) => t.name === "play_groove")!;
+    expect(play.description).toContain("trackGain");
+    expect(play.description).toContain('"e"');
+    expect(play.description).toMatch(/& of 3/);
   });
 });

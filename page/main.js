@@ -2,7 +2,7 @@
 // code, and swaps patterns at bar boundaries (D-10). Strudel itself (AGPL) is
 // loaded unmodified from unpkg at runtime — nothing AGPL lives in this repo (D-7).
 import { msUntilNextCycle } from "./quantize.js";
-import { gridModel, playheadStep } from "./grid.js";
+import { gridModel, playheadStep, countHeader, cycleNext } from "./grid.js";
 
 const SAMPLE_MAP_URL = "https://strudel.b-cdn.net/tidal-drum-machines.json";
 // Acoustic kit (v1.3): index served by the sidecar; the WAV-hosting _base
@@ -314,14 +314,61 @@ function buildGrid() {
   if (!state.groove) return; // render() writes the placeholder text
   const model = gridModel(state.groove);
   phCols = Array.from({ length: model.steps }, () => []);
+
+  // Count header (v1.5 FR-5): bar labels (multi-bar only) + the drummer's count.
+  const header = countHeader(model.bars, model.resolution);
+  if (model.bars > 1) {
+    const barRow = document.createElement("div");
+    barRow.className = "grid-row bar-row";
+    barRow.style.setProperty("--steps", String(model.steps));
+    barRow.appendChild(document.createElement("span"));
+    for (let bar = 1; bar <= model.bars; bar++) {
+      const barEl = document.createElement("div");
+      barEl.className = "bar-title";
+      barEl.style.gridColumn = `span ${model.resolution}`;
+      barEl.textContent = `Bar ${bar}`;
+      barRow.appendChild(barEl);
+    }
+    grid.appendChild(barRow);
+  }
+  const countRow = document.createElement("div");
+  countRow.className = "grid-row count-row";
+  countRow.style.setProperty("--steps", String(model.steps));
+  countRow.appendChild(document.createElement("span"));
+  header.forEach((c, i) => {
+    const cellEl = document.createElement("div");
+    let cls = "count-cell";
+    if (i > 0 && c.barStart) cls += " barline";
+    else if (i > 0 && c.beatStart) cls += " beat";
+    if (c.beatStart) cls += " count-beat";
+    cellEl.className = cls;
+    cellEl.textContent = c.label;
+    countRow.appendChild(cellEl);
+  });
+  grid.appendChild(countRow);
+
   for (const row of model.rows) {
     const rowEl = document.createElement("div");
     rowEl.className = "grid-row";
     rowEl.style.setProperty("--steps", String(model.steps));
     const label = document.createElement("span");
     label.className = "grid-label";
-    label.textContent = row.label ?? row.drum;
-    label.title = row.drum; // hover shows the abbreviation the LLM/tools use
+    const name = document.createElement("span");
+    name.className = "grid-name";
+    name.textContent = row.label ?? row.drum;
+    name.title = row.drum; // hover shows the abbreviation the LLM/tools use
+    label.appendChild(name);
+    // Track fader (v1.5 FR-3): position always reflects the broadcast groove;
+    // sends on release (change), not while dragging (NFR-4).
+    const vol = document.createElement("input");
+    vol.type = "range";
+    vol.min = "0";
+    vol.max = "150";
+    vol.value = String(Math.round((row.trackGain ?? 1) * 100));
+    vol.className = "track-vol";
+    vol.title = `${row.label ?? row.drum} volume: ${vol.value}%`;
+    vol.dataset.drum = row.drum;
+    label.appendChild(vol);
     rowEl.appendChild(label);
     row.cells.forEach((vel, i) => {
       const cell = document.createElement("div");
@@ -332,6 +379,7 @@ function buildGrid() {
         cls += " hit";
         // floor of 0.25 keeps the faintest ghost visible; accents hit 1.0
         cell.style.setProperty("--vel", String(0.25 + 0.75 * vel));
+        cell.dataset.vel = String(vel);
       }
       cell.className = cls;
       cell.dataset.drum = row.drum;
@@ -343,23 +391,38 @@ function buildGrid() {
   }
 }
 
-// ---- grid click-editing (v1.2 FR-5): a click is a *request* — the server owns
-// the groove, applies the toggle, and broadcasts the result. The cell flips
-// optimistically for instant feedback; the next broadcast is authoritative.
-const CLICK_VEL_ALPHA = String(0.25 + 0.75 * 0.8); // matches the server's 0.8 (D-19)
+// ---- track faders (v1.5 FR-3): a slider release is a request, like a click —
+// the server merges setTrackGain and the next broadcast repositions the slider.
+el("grid").addEventListener("change", (event) => {
+  const slider = event.target.closest?.(".track-vol");
+  if (!slider || !slider.dataset.drum) return;
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  ws.send(
+    JSON.stringify({ type: "setTrackGain", drum: slider.dataset.drum, gain: Number(slider.value) / 100 }),
+  );
+});
+
+// ---- grid click-editing (v1.2 FR-5, v1.5 cycle semantics D-36): a click is a
+// *request* — the server owns the groove, cycles the cell (off → normal →
+// STRESS → ghost → off), and broadcasts the result. The cell shows the
+// optimistic next tier instantly; the next broadcast is authoritative.
 el("grid").addEventListener("click", (event) => {
   const cell = event.target.closest?.(".grid-cell");
   if (!cell || !cell.dataset.drum) return;
   if (ws?.readyState !== WebSocket.OPEN) return; // no server, no edit
   ws.send(
-    JSON.stringify({ type: "toggleStep", drum: cell.dataset.drum, step: Number(cell.dataset.step) }),
+    JSON.stringify({ type: "cycleStep", drum: cell.dataset.drum, step: Number(cell.dataset.step) }),
   );
-  if (cell.classList.contains("hit")) {
+  const current = cell.dataset.vel ? Number(cell.dataset.vel) : null;
+  const next = cycleNext(current);
+  if (next === null) {
     cell.classList.remove("hit");
     cell.style.removeProperty("--vel");
+    delete cell.dataset.vel;
   } else {
     cell.classList.add("hit");
-    cell.style.setProperty("--vel", CLICK_VEL_ALPHA);
+    cell.style.setProperty("--vel", String(0.25 + 0.75 * next));
+    cell.dataset.vel = String(next);
   }
 });
 

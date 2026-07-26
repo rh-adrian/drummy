@@ -33,11 +33,17 @@
       font-size: 0.75rem;
     }
     .grid-row { display: grid; grid-template-columns: 8.5em repeat(var(--steps), minmax(13px, 1.6em)); gap: 3px; align-items: stretch; }
-    .grid-label { color: #9aa; align-self: center; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .grid-label { display: flex; flex-direction: column; justify-content: center; gap: 2px; padding-right: 6px; }
+    .grid-name { color: #9aa; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .track-vol { width: 100%; height: 8px; margin: 0; accent-color: #4ade80; cursor: pointer; }
+    .bar-row .bar-title { color: #7dd3fc; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 0 0 2px; border-left: 2px solid #3a3a52; }
+    .count-row { margin-bottom: 1px; }
+    .count-cell { color: #556; font-size: 0.7em; text-align: center; align-self: end; user-select: none; }
+    .count-cell.count-beat { color: #9aa; font-weight: 700; }
     .grid-cell { aspect-ratio: 1; border-radius: 3px; background: #1a1a26; cursor: pointer; }
     .grid-cell:hover { outline: 1px solid #4ade80; }
-    .grid-cell.beat { box-shadow: inset 2px 0 0 #262636; }
-    .grid-cell.barline { box-shadow: inset 2px 0 0 #3a3a52; }
+    .beat { box-shadow: inset 3px 0 0 #2e2e42; }
+    .barline { box-shadow: inset 4px 0 0 #4a4a68; }
     .grid-cell.hit { background: #4ade80; opacity: var(--vel, 1); }
     .grid-cell.ph { outline: 1px solid #7dd3fc; }
     .grid-cell.hit.ph { background: #a7f3d0; }
