@@ -5,7 +5,14 @@ Branch: main (D-12 carried over from drummer-v1: straight to main, no PRs)
 
 ## Context Restore
 
-Approved 2026-07-25 (user added: play/pause button → FR-6/D-18). Next: M1. Builds on drummer-v1 (Status: done, see
+M1 (commit 82b44a6) + M2 (commit bc1df02) done 2026-07-25, pushed to main. New:
+`page/grid.js` (pure gridModel/playheadStep, vitest-covered), grid+playhead+play/pause
+UI in `page/main.js`/`index.html`, groove field on evaluate push/replay
+(`setLastEvaluate(code, groove)`), e2e extended to 18 checks (grid renders, playhead
+advances, local play/pause, un-pause on push). 98 unit tests green. **Next: M-final**
+staff review of the v1.1 diff (82b44a6..bc1df02 + spec). Still pending after review:
+Adrian's manual eye/ear check in Chrome AND Safari (the Safari resume fix has no
+automated gate). Builds on drummer-v1 (Status: done, see
 `specs/drummer-v1/SPEC.md` — its D-1..D-14 all still bind). Feature: replace the raw
 Strudel code display on the page with a drum-machine-style step grid (rows = voices,
 columns = steps, cell brightness = velocity) with a live playhead; code moves into a
@@ -118,7 +125,7 @@ the page that consumes it. Each is safe to stop at.
 - **Verification:** `npm test`, `npm run build`.
 - **Isolation note:** page ignores the unknown field until M2; protocol otherwise
   unchanged.
-- **Status:** pending
+- **Status:** done (2026-07-25, commit 82b44a6)
 
 ### M2: Grid, playhead, play/pause, collapsible code, Safari resume
 - **Scope:** `page/grid.js` (new), `page/main.js`, `page/index.html` (+styles),
@@ -137,7 +144,8 @@ the page that consumes it. Each is safe to stop at.
   Manual: Adrian ear+eye check in Chrome AND Safari (the Safari fix has no automated
   harness — headless runs don't gate on user gestures; record result in the log).
 - **Isolation note:** consumes M1's field; server untouched.
-- **Status:** pending
+- **Status:** done (2026-07-25, commit bc1df02; Adrian's Chrome+Safari manual check
+  tracked in M-final)
 
 ### M-final: Staff-level peer review
 - **Scope:** the full v1.1 diff (M1+M2 commits) + this SPEC.md, with drummer-v1's
@@ -155,3 +163,19 @@ the page that consumes it. Each is safe to stop at.
   silence reported during the same session). Awaiting sign-off.
 - 2026-07-25 — Approved with one addition from the user: a play/pause button (FR-6,
   D-18 local-transport semantics).
+- 2026-07-25 — **M1 done** (82b44a6). TDD red→green (5 new failing assertions → 89
+  tests). Discovery: the sidecar's broadcast and `lastEvaluate` replay already carry
+  arbitrary fields on the push object, so only `setLastEvaluate` (now
+  `(code, groove?)`) and the four tool push sites needed real changes.
+- 2026-07-25 — **M2 done** (bc1df02). `page/grid.js` pure module (row order
+  cymbals→kick-bottom, cells = velocity|null, beatLen = resolution/4 for separators;
+  playheadStep = floor((cyclePos mod bars) × resolution), clamped, null on bad input)
+  with 9 vitest cases; grid rebuilt only when the groove object changes, playhead
+  toggles a class on the current column (rAF loop, hidden when stopped/paused/
+  introspection-failed); play/pause per D-18 (pause deliberately does NOT cancel a
+  pending bar-boundary swap — an incoming evaluate wins and un-pauses); queued
+  evaluates now carry `{code, groove}`; `resumeAudioSync()` (guarded global
+  `getAudioContext().resume()`) runs synchronously in BOTH the arm and play/pause
+  click handlers (FR-5). e2e grew 10→14 page checks → 18 total: grid rows/hits/
+  collapsed-code, playhead advance (caught the bar wrap 15→3), local pause/restart,
+  un-pause on fresh push. 98 unit tests + e2e 18/18 green. Deviations: none.
