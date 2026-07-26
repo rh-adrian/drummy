@@ -84,6 +84,12 @@ function text(result: unknown): string {
     .join("\n");
 }
 
+// now_playing responses are the state JSON followed by a grid rendering
+// (v1.4 FR-4) — parse just the JSON part.
+function stateJson(result: unknown): ReturnType<typeof JSON.parse> {
+  return JSON.parse(text(result).split("\n\nGrid:")[0]);
+}
+
 const GROOVE = {
   tempoBpm: 96,
   swing: 0,
@@ -162,7 +168,7 @@ describe("play_groove", () => {
     const res = (await client.callTool({ name: "play_groove", arguments: { groove: second } })) as CallToolResult;
     expect(res.isError).toBeFalsy();
     expect(sidecar.pushes).toHaveLength(2);
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.tempoBpm).toBe(120);
   });
 });
@@ -192,7 +198,7 @@ describe("update_groove", () => {
       const g = push.groove as { voices: Array<{ drum: string; hits: unknown[] }> };
       expect(g.voices.find((v) => v.drum === "hh")?.hits).toHaveLength(16);
     }
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits).toHaveLength(16);
     expect(np.groove.voices).toHaveLength(3);
   });
@@ -210,7 +216,7 @@ describe("update_groove", () => {
       },
     })) as CallToolResult;
     expect(res.isError).toBeFalsy();
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.tempoBpm).toBe(104);
     expect(np.groove.swing).toBe(0.2);
     const drums = np.groove.voices.map((v: { drum: string }) => v.drum).sort();
@@ -253,7 +259,7 @@ describe("update_groove", () => {
     expect(res.isError).toBe(true);
     expect(sidecar.pushes).toHaveLength(1); // no push for the bad update
     // state unchanged
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.groove.voices).toHaveLength(3);
   });
 });
@@ -268,7 +274,7 @@ describe("set_tempo", () => {
     const push = sidecar.pushes[1];
     expect(push.type).toBe("setCps");
     if (push.type === "setCps") expect(push.cps).toBeCloseTo(0.5, 6); // 120 BPM / 240
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.tempoBpm).toBe(120);
   });
 
@@ -304,7 +310,7 @@ describe("set_kit", () => {
       expect(push.code).toContain('.bank("LinnDrum")');
       expect((push.groove as { bank: string }).bank).toBe("LinnDrum"); // v1.1 FR-1
     }
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.bank).toBe("LinnDrum");
   });
 
@@ -324,7 +330,7 @@ describe("stop / restart", () => {
     const res = (await client.callTool({ name: "stop", arguments: {} })) as CallToolResult;
     expect(res.isError).toBeFalsy();
     expect(sidecar.pushes[1]).toEqual({ type: "hush" });
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.playing).toBe(false);
     const again = (await client.callTool({ name: "stop", arguments: {} })) as CallToolResult;
     expect(again.isError).toBeFalsy();
@@ -347,7 +353,7 @@ describe("stop / restart", () => {
     const res = (await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } })) as CallToolResult;
     expect(res.isError).toBeFalsy();
     expect(sidecar.pushes.map((p) => p.type)).toEqual(["evaluate", "hush", "evaluate"]);
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.playing).toBe(true);
   });
 });
@@ -356,7 +362,7 @@ describe("now_playing", () => {
   it("reflects idle state and page connectivity", async () => {
     const { client, sidecar } = await setup();
     sidecar.connected = false;
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.playing).toBe(false);
     expect(np.pageConnected).toBe(false);
     expect(np.pageUrl).toBe("http://localhost:4747");
@@ -429,7 +435,7 @@ describe("page grid edits (v1.2)", () => {
         .voices.find((v) => v.drum === "hh")!;
       expect(hh.hits.find((h) => h.step === 6)!.vel).toBe(0.8);
     }
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.map((h: { step: number }) => h.step)).toContain(6);
   });
 
@@ -438,7 +444,7 @@ describe("page grid edits (v1.2)", () => {
     await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
     sidecar.editHandler!({ drum: "hh", step: 6 });
     sidecar.editHandler!({ drum: "hh", step: 6 });
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.map((h: { step: number }) => h.step)).not.toContain(6);
   });
 
@@ -449,7 +455,7 @@ describe("page grid edits (v1.2)", () => {
     const pushCount = sidecar.pushes.length;
     sidecar.editHandler!({ drum: "hh", step: 6 });
     expect(sidecar.pushes).toHaveLength(pushCount);
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.playing).toBe(false);
     expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.map((h: { step: number }) => h.step)).toContain(6);
   });
@@ -457,12 +463,12 @@ describe("page grid edits (v1.2)", () => {
   it("refused edits leave state alone and re-push the current evaluate while playing (FR-4)", async () => {
     const { client, sidecar } = await setup();
     await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
-    const before = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} }))).groove;
+    const before = stateJson(await client.callTool({ name: "now_playing", arguments: {} })).groove;
     sidecar.editHandler!({ drum: "cr", step: 0 }); // no cr row in the groove
     const push = sidecar.pushes[sidecar.pushes.length - 1];
     expect(sidecar.pushes).toHaveLength(2); // revert push
     if (push.type === "evaluate") expect(push.groove).toEqual(before);
-    const after = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} }))).groove;
+    const after = stateJson(await client.callTool({ name: "now_playing", arguments: {} })).groove;
     expect(after).toEqual(before);
   });
 
@@ -477,7 +483,7 @@ describe("page grid edits (v1.2)", () => {
     await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
     sidecar.editHandler!({ drum: "hh", step: 6 });
     await client.callTool({ name: "update_groove", arguments: { tempoBpm: 110 } });
-    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
     expect(np.tempoBpm).toBe(110);
     expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.map((h: { step: number }) => h.step)).toContain(6);
   });
@@ -549,5 +555,133 @@ describe("stdio hygiene (NFR-2)", () => {
         /console\.(log|info|debug)\(|process\.stdout\.write/,
       );
     }
+  });
+});
+
+// --------------------------------------------------------------------------
+// v1.4: grid notation on the tool surface (FR-1, FR-4, FR-5)
+// --------------------------------------------------------------------------
+
+describe("grid notation (v1.4)", () => {
+  const GRID_GROOVE = {
+    tempoBpm: 92,
+    bank: "RolandTR808",
+    grid: {
+      hh: "x-x-|x-x-|x-x-|x-x-",
+      sd: "----|X--g|----|X---",
+      bd: "X---|----|X---|----",
+    },
+  };
+
+  it("play_groove accepts grid input and plays it", async () => {
+    const { client, sidecar } = await setup();
+    const res = (await client.callTool({ name: "play_groove", arguments: { groove: GRID_GROOVE } })) as CallToolResult;
+    expect(res.isError).toBeFalsy();
+    const push = sidecar.pushes[0];
+    expect(push.type).toBe("evaluate");
+    if (push.type === "evaluate") {
+      expect(push.code).toContain("setcpm(92/4)");
+      expect(push.code).toContain('.bank("RolandTR808")');
+      const g = push.groove as { voices: Array<{ drum: string; hits: Array<{ step: number; vel: number }> }> };
+      const sd = g.voices.find((v) => v.drum === "sd")!;
+      expect(sd.hits).toEqual([
+        { step: 4, vel: 1, micro: 0 },
+        { step: 7, vel: 0.25, micro: 0 },
+        { step: 12, vel: 1, micro: 0 },
+      ]);
+    }
+  });
+
+  it("play_groove response renders the groove back in grid notation (FR-4)", async () => {
+    const { client } = await setup();
+    const res = await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    expect(text(res)).toContain("hh:  x-o-|----|----|----");
+    expect(text(res)).toContain("sd:  ----|X---|----|X---");
+    expect(text(res)).toContain("bd:  X---|X---|X---|X---");
+  });
+
+  it("play_groove rejects grid AND voices together with an actionable error", async () => {
+    const { client } = await setup();
+    const res = (await client.callTool({
+      name: "play_groove",
+      arguments: { groove: { ...GRID_GROOVE, voices: GROOVE.voices } },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/not both/i);
+  });
+
+  it("update_groove accepts grid rows that replace matching voices and renders the result", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const res = (await client.callTool({
+      name: "update_groove",
+      arguments: { grid: { hh: "XxXx|----|----|----" } },
+    })) as CallToolResult;
+    expect(res.isError).toBeFalsy();
+    expect(text(res)).toContain("hh:  XxXx|----|----|----");
+    expect(text(res)).toContain("bd:  X---|X---|X---|X---");
+    const push = sidecar.pushes.at(-1)!;
+    expect(push.type).toBe("evaluate");
+    if (push.type === "evaluate") {
+      const g = push.groove as { voices: Array<{ drum: string; hits: unknown[] }> };
+      expect(g.voices.find((v) => v.drum === "hh")!.hits).toHaveLength(4);
+      expect(g.voices.map((v) => v.drum).sort()).toEqual(["bd", "hh", "sd"]);
+    }
+  });
+
+  it("update_groove rejects grid AND voices in the same call", async () => {
+    const { client } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const res = (await client.callTool({
+      name: "update_groove",
+      arguments: { grid: { hh: "X---|----|----|----" }, voices: [{ drum: "hh", hits: [{ step: 0 }] }] },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/not both/i);
+  });
+
+  it("update_groove rejects a drum listed in both grid and removeDrums", async () => {
+    const { client } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const res = (await client.callTool({
+      name: "update_groove",
+      arguments: { grid: { hh: "X---|----|----|----" }, removeDrums: ["hh"] },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("hh");
+  });
+
+  it("update_groove surfaces grid conversion errors without touching the groove", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const before = sidecar.pushes.length;
+    const res = (await client.callTool({
+      name: "update_groove",
+      arguments: { grid: { hh: "x-x-" } },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain('grid row "hh"');
+    expect(sidecar.pushes.length).toBe(before);
+  });
+
+  it("now_playing includes the grid rendering (FR-4)", async () => {
+    const { client } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const res = await client.callTool({ name: "now_playing", arguments: {} });
+    expect(text(res)).toContain("bd:  X---|X---|X---|X---");
+    expect(text(res)).toContain('"playing": true');
+  });
+
+  it("play_groove teaches the notation and groove musicianship (FR-5)", async () => {
+    const { client } = await setup();
+    const tools = await client.listTools();
+    const play = tools.tools.find((t) => t.name === "play_groove")!;
+    expect(play.description).toContain("X = accent");
+    expect(play.description).toContain("g = ghost");
+    expect(play.description).toContain("timekeeper");
+    expect(play.description).toMatch(/back-?beat/i);
+    expect(play.description).toContain("swing 0.15-0.35");
+    const update = tools.tools.find((t) => t.name === "update_groove")!;
+    expect(update.description).toContain("grid");
   });
 });

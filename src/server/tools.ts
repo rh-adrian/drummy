@@ -4,6 +4,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { parseGroove, type Groove } from "../core/groove.js";
+import { gridToVoices, renderGrid } from "../core/grid.js";
 import { compileGroove } from "../core/compile.js";
 import { toggleStep } from "../core/edit.js";
 import { BANKS, BANK_NAMES, DRUMS, DRUM_ABBRS } from "../core/kits.js";
@@ -121,7 +122,18 @@ const grooveShape = z
       .number()
       .optional()
       .describe("Steps per bar: 8, 12, 16, 24, or 32. 16 = 16th notes (default; use with swing); 12/24 = triplet feels."),
-    voices: z.array(voiceShape).optional().describe("One entry per drum. REQUIRED."),
+    grid: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe(
+        'Drum-tab rows, the preferred way to write a groove: {"bd": "X---|----|X---|----", ...}. ' +
+          'X/x/o/g = accent/normal/soft/ghost, "-" or "." = rest, "|" and spaces are cosmetic. ' +
+          "One character per step, bars × resolution characters per row. Use grid OR voices, not both.",
+      ),
+    voices: z
+      .array(voiceShape)
+      .optional()
+      .describe("JSON alternative to grid for exact velocities and per-hit micro-timing. One entry per drum."),
   })
   .passthrough();
 
@@ -129,15 +141,35 @@ const VELOCITY_GUIDE =
   "Velocity conventions: accents 1.0, normal hits 0.7-0.9, ghost notes 0.2-0.4 (essential for funk/soul snare work). " +
   "Micro-timing: micro=0.02-0.05 on a hit drags it (laid-back), negative pushes it; use sparingly for feel, e.g. a lazy backbeat.";
 
+const GRID_GUIDE =
+  "PREFERRED FORMAT — write groove.grid as drum-tab rows: one pattern string per drum, one character per step. " +
+  "Letters set velocity: X = accent (1.0), x = normal (0.7), o = soft (0.5), g = ghost (0.25); \"-\" or \".\" = rest; " +
+  '"|" and spaces are cosmetic beat separators (each row needs bars × resolution real characters). ' +
+  "Example — one bar of funk at resolution 16:\n" +
+  '  "hh": "x-x-|x-x-|x-x-|x-x-"\n' +
+  '  "sd": "----|X--g|-g--|X---"\n' +
+  '  "bd": "X---|--x-|----|-x--"\n' +
+  "Columns are moments in time — read them vertically to SEE how kick, snare, and hats interlock. " +
+  "The JSON voices format (hits with exact vel/micro) remains available for fine control beyond the four letters. ";
+
+const MUSICIANSHIP =
+  "What makes it feel human — check every groove against this before playing: " +
+  "(1) the timekeeper (hh, rd, or cb) almost never rests; holes in the time line sound like mistakes, not feel. " +
+  "(2) Accents follow the music: back-beats (sd on beats 2 and 4) are the loudest hits, and hat dynamics vary — never " +
+  "give every hit the same letter, never write mechanical velocity ramps. " +
+  "(3) Snare ghosts (g) sprinkled between back-beats are what make funk, soul, and hip-hop breathe. " +
+  "(4) Use swing 0.15-0.35 for shuffled/swung feels — dead-straight time is for machine genres only. " +
+  "(5) Kick and snare converse instead of stacking on the same steps. ";
+
 const GROOVE_GUIDE =
-  "A groove is a bar grid: `resolution` steps per bar (16 = 16th notes) times `bars` (1-4). Each voice is one drum " +
-  `(${DRUM_ABBRS.join(", ")}) with hits at steps. In 4/4 at resolution 16: beats fall on steps 0/4/8/12, backbeat snare on 4 and 12, ` +
-  "8th-note hats on even steps, 16th hats on every step. `swing` (0-0.6) delays every odd step by that fraction of a step — " +
-  "for a classic swung-16ths feel use resolution 16 with swing 0.15-0.35 (0.1-0.2 subtle shuffle, ~0.33 hard triplet swing). " +
+  "A groove is a bar grid: `resolution` steps per bar (16 = 16th notes) times `bars` (1-4). Drums: " +
+  `${DRUM_ABBRS.join(", ")}. In 4/4 at resolution 16: beats fall on steps 0/4/8/12 (grid columns 1/5/9/13), backbeat ` +
+  "snare on steps 4 and 12, 8th-note hats on even steps, 16th hats on every step. `swing` (0-0.6) delays every odd " +
+  "step by that fraction of a step (0.1-0.2 subtle shuffle, ~0.33 hard triplet swing). " +
   VELOCITY_GUIDE +
   " Genre sketches: funk = syncopated bd, sd backbeat + ghosts on 16th offsets, 16th hh with accent pattern; " +
   "house/techno = bd on 0/4/8/12, oh on 2/6/10/14; boom-bap = swing 0.15-0.25, AkaiMPC60 or EmuSP12; " +
-  "halftime = sd only on step 8. Keep hats quieter than kick/snare (0.4-0.7) for a natural mix.";
+  "halftime = sd only on step 8. Keep hats quieter than kick/snare (x/o letters, not X) for a natural mix.";
 
 // ---------------------------------------------------------------------------
 
@@ -223,6 +255,8 @@ export function createDrummerServer(
         "Start (or replace) the looping drum groove in the user's browser. Author the groove yourself from what you know " +
         "about the requested song, artist, or genre — capture the FEEL (which drums, where the accents and ghost notes sit, " +
         "swing, tempo), not a note-for-note transcription. " +
+        GRID_GUIDE +
+        MUSICIANSHIP +
         GROOVE_GUIDE,
       inputSchema: { groove: grooveShape.describe("The groove to play.") },
     },
@@ -238,7 +272,7 @@ export function createDrummerServer(
       });
       groove = parsed.groove;
       playing = true;
-      return ok(`Playing: ${playingSummary(parsed.groove)}`);
+      return ok(`Playing: ${playingSummary(parsed.groove)}\n\n${renderGrid(parsed.groove)}`);
     },
   );
 
@@ -247,10 +281,11 @@ export function createDrummerServer(
     {
       title: "Update the playing groove",
       description:
-        "Edit the currently playing groove without restarting it: replace or add voices (matched by drum name), remove " +
-        "drums, or change tempo/swing/bank/bars/resolution. Only send what changes — everything else is kept. The edit " +
-        "applies at the next bar boundary, click-free. Use this for iteration ('more hi-hat', 'add ghost notes', " +
-        "'make it swing'). " +
+        "Edit the currently playing groove without restarting it: replace or add drums (as grid rows or JSON voices, " +
+        "matched by drum name), remove drums, or change tempo/swing/bank/bars/resolution. Only send what changes — " +
+        "everything else is kept. The edit applies at the next bar boundary, click-free. Use this for iteration " +
+        "('more hi-hat', 'add ghost notes', 'make it swing'). Grid rows use play_groove's notation (X/x/o/g letters); " +
+        "to remove a drum use removeDrums, not an all-rest row. " +
         VELOCITY_GUIDE,
       inputSchema: {
         tempoBpm: z.number().optional().describe("New tempo in BPM, 40-300."),
@@ -258,6 +293,13 @@ export function createDrummerServer(
         bank: z.string().optional().describe(`New sample bank. One of: ${BANK_NAMES.join(", ")}.`),
         bars: z.number().optional().describe("New loop length in bars, 1-4."),
         resolution: z.number().optional().describe("New steps per bar: 8, 12, 16, 24, or 32."),
+        grid: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            "Drum-tab rows to add or replace, matched by drum — same notation as play_groove. " +
+              "A row fully replaces that drum's previous hits.",
+          ),
         voices: z
           .array(voiceShape)
           .optional()
@@ -271,21 +313,32 @@ export function createDrummerServer(
       if (Object.values(edits).every((v) => v === undefined)) {
         return err(
           "No changes provided — pass the fields to change at the top level (tempoBpm, swing, bank, bars, resolution, " +
-            "voices, removeDrums), not wrapped in a groove object.",
+            "grid, voices, removeDrums), not wrapped in a groove object.",
         );
       }
-      const conflict = (edits.removeDrums ?? []).filter((d) =>
-        (edits.voices ?? []).some((v) => (v as { drum?: string }).drum === d),
-      );
+      if (edits.grid && edits.voices) {
+        return err('Provide either "grid" (notation rows) or "voices" (JSON hit lists), not both.');
+      }
+      const editedDrums = [
+        ...(edits.voices ?? []).map((v) => (v as { drum?: string }).drum),
+        ...Object.keys(edits.grid ?? {}),
+      ];
+      const conflict = (edits.removeDrums ?? []).filter((d) => editedDrums.includes(d));
       if (conflict.length > 0) {
         return err(
-          `Contradictory update: ${conflict.join(", ")} appears in both voices and removeDrums — to replace a drum's ` +
-            "hits, just include it in voices; to drop it, just list it in removeDrums.",
+          `Contradictory update: ${conflict.join(", ")} appears in both the edits and removeDrums — to replace a ` +
+            "drum's hits, just include it in grid/voices; to drop it, just list it in removeDrums.",
         );
       }
       const current = groove as Groove;
+      let editVoices = (edits.voices ?? []) as unknown[];
+      if (edits.grid) {
+        const converted = gridToVoices(edits.grid, edits.bars ?? current.bars, edits.resolution ?? current.resolution);
+        if (!converted.ok) return err(`Invalid update — ${converted.error}. The groove is unchanged.`);
+        editVoices = converted.voices;
+      }
       const removed = new Set(edits.removeDrums ?? []);
-      const replacements = new Map((edits.voices ?? []).map((v) => [(v as { drum: string }).drum, v]));
+      const replacements = new Map(editVoices.map((v) => [(v as { drum: string }).drum, v]));
       const voices: unknown[] = current.voices
         .filter((v) => !removed.has(v.drum))
         .map((v) => replacements.get(v.drum) ?? v);
@@ -308,7 +361,7 @@ export function createDrummerServer(
         groove: parsed.groove,
       });
       groove = parsed.groove;
-      return ok(`Updated: ${playingSummary(parsed.groove)}`);
+      return ok(`Updated: ${playingSummary(parsed.groove)}\n\n${renderGrid(parsed.groove)}`);
     },
   );
 
@@ -430,21 +483,22 @@ export function createDrummerServer(
     },
     async () => {
       if (isUnavailable(sidecar)) return err(sidecar.unavailableError);
-      return ok(
-        JSON.stringify(
-          {
-            playing,
-            tempoBpm: groove?.tempoBpm ?? null,
-            bank: groove?.bank ?? null,
-            groove,
-            pageConnected: sidecar.pageConnected(),
-            pageUrl: sidecar.url,
-            pageStatus: sidecar.lastStatus(),
-          },
-          null,
-          2,
-        ),
+      const state = JSON.stringify(
+        {
+          playing,
+          tempoBpm: groove?.tempoBpm ?? null,
+          bank: groove?.bank ?? null,
+          groove,
+          pageConnected: sidecar.pageConnected(),
+          pageUrl: sidecar.url,
+          pageStatus: sidecar.lastStatus(),
+        },
+        null,
+        2,
       );
+      // Grid rendering after the JSON so the model reads (and edits) the groove
+      // in the same notation it writes (D-33) — includes any page click-edits.
+      return ok(groove ? `${state}\n\nGrid:\n${renderGrid(groove)}` : state);
     },
   );
 

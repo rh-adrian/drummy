@@ -96,7 +96,7 @@ async function main() {
   const kits = await call("list_kits");
   check("list_kits shows real drum availability", /RolandTR808[^\n]*\[drums: [^\]]*bd/.test(textOf(kits)), textOf(kits).split("\n")[1] ?? "");
 
-  const np0 = JSON.parse(textOf(await call("now_playing")));
+  const np0 = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
   check("now_playing sees the page (heartbeat recency)", np0.pageConnected === true && np0.playing === false, JSON.stringify({ pageConnected: np0.pageConnected, playing: np0.playing }));
 
   await page.evaluate("window.__recording = true");
@@ -154,7 +154,7 @@ async function main() {
   mark("tempo");
   const tempo = await call("set_tempo", { bpm: BPM_C });
   check("set_tempo ok", !tempo.isError, textOf(tempo));
-  const np1 = JSON.parse(textOf(await call("now_playing")));
+  const np1 = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
   check(
     "now_playing reflects the session",
     np1.playing === true && np1.tempoBpm === BPM_C && np1.bank === "RolandTR808" &&
@@ -173,7 +173,7 @@ async function main() {
   const optimistic = (await page.evaluate(
     `document.querySelector('${ohCell}').classList.contains("hit")`,
   )) as boolean;
-  const npEdit = JSON.parse(textOf(await call("now_playing")));
+  const npEdit = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
   const ohHits = (d: { groove: { voices: Array<{ drum: string; hits: Array<{ step: number; vel: number }> }> } }) =>
     d.groove.voices.find((v) => v.drum === "oh")!.hits;
   const added = ohHits(npEdit).find((h) => h.step === 1);
@@ -184,7 +184,7 @@ async function main() {
   );
   await page.click(ohCell);
   await sleep(400);
-  const npEdit2 = JSON.parse(textOf(await call("now_playing")));
+  const npEdit2 = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
   check(
     "second click removes it again (v1.2)",
     ohHits(npEdit2).every((h) => h.step !== 1),
@@ -265,7 +265,7 @@ async function main() {
   mark("end");
   await page.evaluate("window.__recording = false");
 
-  const np2 = JSON.parse(textOf(await call("now_playing")));
+  const np2 = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
   check("now_playing shows stopped", np2.playing === false, `playing=${np2.playing}`);
 
   // v1.1 FR-6/D-18: page-local play/pause. After the server stop the button
@@ -293,7 +293,7 @@ async function main() {
     localPlaying === true && localPaused.playing === false && localPaused.paused === true,
     `restarted=${localPlaying}, then paused=${localPaused.paused}`,
   );
-  const npPaused = JSON.parse(textOf(await call("now_playing")));
+  const npPaused = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
   check(
     "now_playing sees the page paused (FR-6)",
     npPaused.pageStatus?.paused === true,

@@ -57,7 +57,7 @@ No MCP client handy? `npm run dev:jam` plays a canned groove through the same pa
 
 | Tool | What it does |
 |------|--------------|
-| `play_groove` | Start (or replace) the looping groove from a structured groove JSON |
+| `play_groove` | Start (or replace) the looping groove — drum-tab grid notation or groove JSON |
 | `update_groove` | Partial edit of the playing groove — only the changed fields are sent |
 | `set_tempo` | Change BPM smoothly without restarting the loop or losing bar phase |
 | `set_kit` | Same pattern, different kit's samples (drum machines or the acoustic kit) |
@@ -69,7 +69,10 @@ The tool descriptions teach the model the drummer vocabulary (drum abbreviations
 ghost-note velocity conventions, swing semantics, genre sketches), so any frontier
 model can drive it with no external docs.
 
-A groove is a bar grid — `resolution` steps per bar × `bars`, one voice per drum:
+A groove is a bar grid — `resolution` steps per bar × `bars`. The preferred way to
+write one is **grid notation** (v1.4): drum-tab rows, one character per step, letters
+carry velocity — `X` accent (1.0), `x` normal (0.7), `o` soft (0.5), `g` ghost (0.25),
+`-`/`.` rest, `|` cosmetic beat separator:
 
 ```jsonc
 {
@@ -78,17 +81,28 @@ A groove is a bar grid — `resolution` steps per bar × `bars`, one voice per d
   "bank": "RolandTR808",  // see list_kits
   "bars": 1,              // 1–4
   "resolution": 16,       // steps per bar: 8, 12, 16, 24, 32 (12/24 = triplet feels)
-  "voices": [
-    { "drum": "bd", "hits": [ { "step": 0 }, { "step": 7, "vel": 0.9 }, { "step": 10 } ] },
-    { "drum": "sd", "hits": [ { "step": 4 }, { "step": 12 },
-                              { "step": 6, "vel": 0.25 } ] },   // ghost note
-    { "drum": "hh", "hits": [ { "step": 0, "vel": 0.6 }, { "step": 2, "vel": 0.5 } /* … */ ] }
-  ]
+  "grid": {
+    "hh": "x-x-|x-x-|x-x-|x-x-",
+    "sd": "----|X--g|-g--|X---",   // backbeat + ghost notes
+    "bd": "X---|--x-|----|-x--"
+  }
 }
 ```
 
-**Per-hit velocity and per-hit micro-timing (`micro`, push/drag) are first-class** —
-that's the difference between a robotic grid and something that feels like Brick House.
+Columns line up across rows, so how the kick, snare, and hats interlock is visible in
+the notation itself — the representation LLMs reason over drum grooves best
+([arXiv:2505.08203](https://arxiv.org/abs/2505.08203)). Tool responses render the
+playing groove back in the same notation (including your grid click-edits).
+
+The JSON `voices` form (`hits` with exact `vel` and per-hit `micro` push/drag) remains
+first-class for fine control beyond the four letters — use one or the other per call:
+
+```jsonc
+  "voices": [
+    { "drum": "sd", "hits": [ { "step": 4 }, { "step": 12, "micro": 0.03 },  // lazy backbeat
+                              { "step": 6, "vel": 0.25 } ] }                 // ghost note
+  ]
+```
 
 ## How it works
 

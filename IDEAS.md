@@ -35,3 +35,14 @@ Notes for whenever this gets specced:
   grids) is a head start on the same primitives.
 - MIDI out means a synth target (DAW, fluidsynth, or a Strudel bass voice) — decide when
   specced.
+
+## Neural groove humanizer (captured 2026-07-26, D-34 of v1.4)
+
+If grid notation + musicianship teaching (v1.4) still leaves grooves feeling stiff:
+a post-processing "humanize" stage that applies real-drummer velocity contours and
+micro-timing to a quantized groove before compilation. Prior art: Google Magenta's
+GrooVAE (https://magenta.withgoogle.com/groovae), trained on the Groove MIDI Dataset
+(13.6 h of pro drummers on a TD-11, https://magenta.tensorflow.org/datasets/groove).
+Their split matches our schema exactly: "score" = quantized steps, "groove" =
+velocity + micro-timing. Could also be a hand-rolled rule set (swing + accent
+contour + push/pull per genre) as a `humanize: 0-1` groove field — no ML dependency.

@@ -17,6 +17,9 @@ Orient before changing anything:
 
 ```
 src/core/       groove schema (zod) + groove→Strudel compiler + kit list  (pure, no I/O)
+                grid.ts: drum-tab grid notation (v1.4) — X/x/o/g velocity letters,
+                gridToVoices parse + renderGrid round-trip (responses show grooves
+                in the same notation the LLM writes)
 src/server/     sidecar.ts (HTTP static + WS push)  tools.ts (the 7 MCP tools)
 src/index.ts    stdio entry: McpServer + sidecar lifecycle
 page/           browser client: @strudel/web via CDN, bar-quantized swaps, heartbeat,
@@ -47,7 +50,9 @@ dev processes without cleaning them up; kill anything holding port 4747.
   redistribute them. Any sample that ever lands in-repo must be recorded in SAMPLES.md
   with source + license *first*.
 - **The groove schema always carries per-hit velocity and micro-timing** plus global
-  swing. Any change that drops them is a regression (FR-7).
+  swing. Any change that drops them is a regression (FR-7). Grid notation (v1.4) is
+  the preferred LLM authoring format, but the JSON `voices` form stays first-class —
+  it's the only way to express exact velocities and per-hit micro.
 - **Real-time is a non-goal.** Bar-boundary hot-swap is the design; don't "optimize"
   swaps to apply mid-bar.
 - **Tool errors are isError results with LLM-actionable text** (FR-9) — keep protocol

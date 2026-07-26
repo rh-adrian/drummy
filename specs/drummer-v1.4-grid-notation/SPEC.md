@@ -5,18 +5,19 @@ Branch: main (straight-to-main per D-12)
 
 ## Context Restore
 
-Approved and in-progress 2026-07-26. M1 DONE: src/core/grid.ts (gridToVoices +
-renderGrid, pure), parseGroove accepts `grid` XOR `voices` (grid converts then all
-existing checks run); 20 new tests in test/core/grid.test.ts; 149 unit tests green,
-build clean. Letter tiers X/x/o/g = 1/0.7/0.5/0.25, O = X alias, all-rest rows
-skipped (drum-tab convention), renderGrid uses fixed 5-char "hh:  " prefix, "|"
-each resolution/4 steps, "||" between bars, nearest-letter snap (midpoints 0.85 /
-0.6 / 0.375). NEXT: M2 — src/server/tools.ts: input schemas mention grid,
-play_groove description = notation manual + musicianship checklist (FR-5),
-play/update/now_playing responses embed renderGrid (FR-4), README + CLAUDE.md;
-then live-jam smoke. Background: grooves sounded stiff because per-voice hit
-arrays hide cross-voice alignment; grid notation is research-validated
-(arXiv:2505.08203, arXiv:2301.01162).
+M1 and M2 DONE 2026-07-26 (M1 commit c52e9fc). Core: src/core/grid.ts
+(gridToVoices + renderGrid), parseGroove accepts `grid` XOR `voices`; letters
+X/x/o/g = 1/0.7/0.5/0.25, O alias, all-rest rows skipped, fixed 5-char row
+prefix, "|" per beat, "||" between bars, snap midpoints 0.85/0.6/0.375. Tools:
+grid field on play_groove + update_groove (update converts rows with merged
+bars/resolution, replaces voices by drum; grid+voices or grid∩removeDrums →
+errors), play/update responses append renderGrid, now_playing appends
+"\n\nGrid:\n<render>" after the JSON (e2e + tests parse JSON via
+split("\n\nGrid:")[0]), play_groove description = GRID_GUIDE + MUSICIANSHIP +
+GROOVE_GUIDE. README/CLAUDE.md/IDEAS.md updated (GrooVAE humanizer parked,
+D-34). 158 unit tests green, e2e 29/29. REMAINING: live-jam smoke (driver
+relaunched on new build — watch it author in grid, Adrian ear-check), then
+M-final staff review → Status done.
 
 ## Overview
 
@@ -157,7 +158,7 @@ M1 = core links (grid.ts + groove.ts), M2 = tools + docs, M-final = review.
   notation and Adrian ear-checks the feel.
 - **Isolation note:** responses gain text, existing fields unchanged; JSON voices
   path untouched.
-- **Status:** pending
+- **Status:** done (2026-07-26; live-jam ear check pending with Adrian, see log)
 
 ### M-final: Staff-level peer review
 - **Scope:** full v1.4 diff + this SPEC.md
@@ -169,6 +170,15 @@ M1 = core links (grid.ts + groove.ts), M2 = tools + docs, M-final = review.
 - **Status:** pending
 
 ## Progress Log
+
+- 2026-07-26: M2 done — grid on the tool surface (play/update input, renderGrid in
+  play/update/now_playing responses, GRID_GUIDE + MUSICIANSHIP teaching), README/
+  CLAUDE.md/IDEAS.md updated. 158 unit, e2e 29/29. Deviations: (1) now_playing
+  response is JSON + "\n\nGrid:" section — existing tests and scripts/e2e.ts
+  parse sites updated to split on the marker (intentional FR-4 shape change);
+  (2) update_groove treats all-rest rows as placeholders (skipped), description
+  says use removeDrums to drop a drum. Old jam driver/server from v1.3 killed
+  (port 4747 housekeeping done).
 
 - 2026-07-26: M1 done — grid.ts (parse+render) + parseGroove grid support, 20 tests, 149 green, no deviations from plan.
 - 2026-07-26: Spec approved by Adrian ("lets go").
