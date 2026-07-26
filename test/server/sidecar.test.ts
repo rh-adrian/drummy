@@ -238,6 +238,20 @@ describe("startSidecar", () => {
     ws.close();
   });
 
+  it("routes toggleStep frames from a page to the onEdit handler (v1.2 FR-1)", async () => {
+    const s = await start();
+    const edits: Array<{ drum: string; step: number }> = [];
+    s.onEdit((e) => edits.push(e));
+    const { ws } = await connect(PORT);
+    ws.send(JSON.stringify({ type: "toggleStep", drum: "hh", step: 5 }));
+    ws.send(JSON.stringify({ type: "toggleStep", drum: "bd" })); // malformed: no step
+    ws.send(JSON.stringify({ type: "toggleStep", drum: 7, step: 1 })); // malformed drum
+    ws.send(JSON.stringify({ type: "status", playing: true })); // unrelated
+    await new Promise((r) => setTimeout(r, 80));
+    expect(edits).toEqual([{ drum: "hh", step: 5 }]);
+    ws.close();
+  });
+
   it("rejects with an actionable error when the port is in use", async () => {
     const s = await start();
     await expect(startSidecar({ port: PORT })).rejects.toThrow(

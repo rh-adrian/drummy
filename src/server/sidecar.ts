@@ -24,6 +24,12 @@ export interface PageStatus {
   [key: string]: unknown;
 }
 
+/** Page → server grid edit request (v1.2 FR-1). */
+export interface PageEdit {
+  drum: string;
+  step: number;
+}
+
 export interface Sidecar {
   port: number;
   url: string;
@@ -38,6 +44,8 @@ export interface Sidecar {
   /** True while at least one page has sent a status heartbeat recently (guards against half-open sockets). */
   pageConnected(): boolean;
   lastStatus(): PageStatus | null;
+  /** Register the handler for page grid-edit requests (last registration wins). */
+  onEdit(handler: (edit: PageEdit) => void): void;
   close(): Promise<void>;
 }
 
@@ -144,6 +152,7 @@ export async function startSidecar(
   let lastCps: SidecarPush | null = null; // a setCps issued after lastEvaluate
   let hushed = false;
   let lastStatus: PageStatus | null = null;
+  let editHandler: ((edit: PageEdit) => void) | null = null;
   const pageSockets = new Map<WebSocket, number>(); // socket → last heartbeat time
 
   wss.on("connection", (ws) => {
@@ -160,6 +169,11 @@ export async function startSidecar(
       if (msg && typeof msg === "object" && (msg as PageStatus).type === "status") {
         lastStatus = msg as PageStatus;
         pageSockets.set(ws, Date.now());
+      } else if (msg && typeof msg === "object" && (msg as { type?: unknown }).type === "toggleStep") {
+        const { drum, step } = msg as { drum?: unknown; step?: unknown };
+        if (typeof drum === "string" && typeof step === "number") {
+          editHandler?.({ drum, step });
+        }
       }
     });
     ws.on("close", () => {
@@ -202,6 +216,9 @@ export async function startSidecar(
     },
     lastStatus() {
       return lastStatus;
+    },
+    onEdit(handler) {
+      editHandler = handler;
     },
     async close() {
       for (const ws of wss.clients) ws.terminate();

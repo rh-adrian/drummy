@@ -15,6 +15,7 @@ interface MockSidecar extends SidecarHandle {
   connected: boolean;
   replayCode: string | null;
   replayGroove: unknown;
+  editHandler: ((edit: { drum: string; step: number }) => void) | null;
 }
 
 function mockSidecar(): MockSidecar {
@@ -25,6 +26,10 @@ function mockSidecar(): MockSidecar {
     connected: true,
     replayCode: null,
     replayGroove: null,
+    editHandler: null,
+    onEdit(handler) {
+      self.editHandler = handler;
+    },
     push(msg: SidecarPush) {
       self.pushes.push(msg);
       if (msg.type === "evaluate") {
@@ -382,6 +387,73 @@ describe("list_kits", () => {
     const out = text(await client.callTool({ name: "list_kits", arguments: {} }));
     expect(out).toContain("RolandTR808");
     expect(out).toContain("LinnDrum");
+  });
+});
+
+describe("page grid edits (v1.2)", () => {
+  it("adds a hit at vel 0.8 while playing and pushes the new evaluate", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!({ drum: "hh", step: 6 });
+    expect(sidecar.pushes).toHaveLength(2);
+    const push = sidecar.pushes[1];
+    expect(push.type).toBe("evaluate");
+    if (push.type === "evaluate") {
+      const hh = (push.groove as { voices: Array<{ drum: string; hits: Array<{ step: number; vel: number }> }> })
+        .voices.find((v) => v.drum === "hh")!;
+      expect(hh.hits.find((h) => h.step === 6)!.vel).toBe(0.8);
+    }
+    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.map((h: { step: number }) => h.step)).toContain(6);
+  });
+
+  it("removes a hit on second toggle", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!({ drum: "hh", step: 6 });
+    sidecar.editHandler!({ drum: "hh", step: 6 });
+    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.map((h: { step: number }) => h.step)).not.toContain(6);
+  });
+
+  it("edits while stopped mutate state without pushing (never resurrects playback, D-21)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    await client.callTool({ name: "stop", arguments: {} });
+    const pushCount = sidecar.pushes.length;
+    sidecar.editHandler!({ drum: "hh", step: 6 });
+    expect(sidecar.pushes).toHaveLength(pushCount);
+    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    expect(np.playing).toBe(false);
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.map((h: { step: number }) => h.step)).toContain(6);
+  });
+
+  it("refused edits leave state alone and re-push the current evaluate while playing (FR-4)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const before = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} }))).groove;
+    sidecar.editHandler!({ drum: "cr", step: 0 }); // no cr row in the groove
+    const push = sidecar.pushes[sidecar.pushes.length - 1];
+    expect(sidecar.pushes).toHaveLength(2); // revert push
+    if (push.type === "evaluate") expect(push.groove).toEqual(before);
+    const after = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} }))).groove;
+    expect(after).toEqual(before);
+  });
+
+  it("ignores edits when no groove is loaded", async () => {
+    const { sidecar } = await setup();
+    sidecar.editHandler!({ drum: "hh", step: 0 });
+    expect(sidecar.pushes).toHaveLength(0);
+  });
+
+  it("update_groove merges on top of a human edit (FR-6)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!({ drum: "hh", step: 6 });
+    await client.callTool({ name: "update_groove", arguments: { tempoBpm: 110 } });
+    const np = JSON.parse(text(await client.callTool({ name: "now_playing", arguments: {} })));
+    expect(np.tempoBpm).toBe(110);
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.map((h: { step: number }) => h.step)).toContain(6);
   });
 });
 

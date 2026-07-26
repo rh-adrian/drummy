@@ -3,8 +3,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { parseGroove, type Groove } from "../core/groove.js";
 import { compileGroove } from "../core/compile.js";
+import { toggleStep } from "../core/edit.js";
 import { BANKS, BANK_NAMES, DRUMS, DRUM_ABBRS } from "../core/kits.js";
-import type { PageStatus, SidecarPush } from "./sidecar.js";
+import type { PageEdit, PageStatus, SidecarPush } from "./sidecar.js";
 
 // MCP tool surface (M3). Tool descriptions double as the drummer's manual for
 // the LLM (FR-10): they must teach the vocabulary well enough that a frontier
@@ -21,6 +22,7 @@ export interface SidecarHandle {
   setLastEvaluate(code: string, groove?: Groove): void;
   pageConnected(): boolean;
   lastStatus(): PageStatus | null;
+  onEdit(handler: (edit: PageEdit) => void): void;
 }
 
 /** Startup failed (port in use): every tool reports the error instead. */
@@ -132,6 +134,28 @@ export function createDrummerServer(
   // Session state (A-1: one jam session per server instance).
   let groove: Groove | null = null;
   let playing = false;
+
+  // Grid click-edits from the page (v1.2): the human and the LLM share this
+  // session groove, so now_playing/update_groove see clicks automatically.
+  if (!isUnavailable(sidecar)) {
+    sidecar.onEdit(({ drum, step }) => {
+      if (!groove) {
+        console.error(`[drummer] ignored grid edit ${drum}@${step}: no groove loaded`);
+        return;
+      }
+      const res = toggleStep(groove, drum, step);
+      if (!res.ok) {
+        console.error(`[drummer] refused grid edit ${drum}@${step}: ${res.reason}`);
+        // Snap the page's optimistic cell back to reality (FR-4).
+        if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove });
+        return;
+      }
+      groove = res.groove;
+      // Never resurrect playback from a click while stopped (D-21) — the edit
+      // just waits in state for the next play/update.
+      if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove });
+    });
+  }
 
   const fetchSampleMap =
     options.fetchSampleMap ??
