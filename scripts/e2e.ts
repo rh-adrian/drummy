@@ -121,6 +121,26 @@ async function main() {
   check("play_groove ok", !play.isError, textOf(play));
   await sleep(7200); // ~3 bars
 
+  // v1.1 FR-2/FR-4: the grid shows the groove (4 rows, every hit lit), and the
+  // code details stay collapsed when groove data is present.
+  const grid = (await page.evaluate(`(() => ({
+    rows: document.querySelectorAll("#grid .grid-row").length,
+    hits: document.querySelectorAll("#grid .grid-cell.hit").length,
+    grooveVoices: window.__ai.state.groove ? window.__ai.state.groove.voices.length : 0,
+    codeOpen: document.querySelector("#codebox").open,
+  }))()`)) as { rows: number; hits: number; grooveVoices: number; codeOpen: boolean };
+  check(
+    "grid renders the groove",
+    grid.rows === 4 && grid.hits >= 15 && grid.grooveVoices === 4 && !grid.codeOpen,
+    JSON.stringify(grid),
+  );
+
+  // v1.1 FR-3: playhead sweeps while playing.
+  const ph1 = (await page.evaluate("window.__ai.getPlayheadStep()")) as number | null;
+  await sleep(600); // one beat at 100 BPM = 4 steps
+  const ph2 = (await page.evaluate("window.__ai.getPlayheadStep()")) as number | null;
+  check("playhead advances with the beat", ph1 !== null && ph2 !== null && ph1 !== ph2, `step ${ph1} → ${ph2}`);
+
   // Phase B — iterate: busier hats.
   mark("update");
   const update = await call("update_groove", {
@@ -152,6 +172,42 @@ async function main() {
 
   const np2 = JSON.parse(textOf(await call("now_playing")));
   check("now_playing shows stopped", np2.playing === false, `playing=${np2.playing}`);
+
+  // v1.1 FR-6/D-18: page-local play/pause. After the server stop the button
+  // restarts the last groove locally; a second click pauses it.
+  await page.click("#playpause");
+  await sleep(400);
+  const localPlaying = (await page.evaluate("window.__ai.state.playing")) as boolean;
+  await page.click("#playpause");
+  await sleep(200);
+  const localPaused = (await page.evaluate(
+    "({ playing: window.__ai.state.playing, paused: window.__ai.state.paused })",
+  )) as { playing: boolean; paused: boolean };
+  check(
+    "play/pause button drives local transport",
+    localPlaying === true && localPaused.playing === false && localPaused.paused === true,
+    `restarted=${localPlaying}, then paused=${localPaused.paused}`,
+  );
+
+  // …and a fresh push while paused applies and plays (D-18).
+  const rePlay = await call("play_groove", {
+    groove: {
+      tempoBpm: 120,
+      bank: "RolandTR808",
+      voices: [{ drum: "bd", hits: [{ step: 0 }, { step: 4 }, { step: 8 }, { step: 12 }] }],
+    },
+  });
+  await sleep(600); // not playing → swap applies immediately
+  const unPaused = (await page.evaluate(
+    "({ playing: window.__ai.state.playing, paused: window.__ai.state.paused })",
+  )) as { playing: boolean; paused: boolean };
+  check(
+    "incoming groove un-pauses the page (D-18)",
+    !rePlay.isError && unPaused.playing === true && unPaused.paused === false,
+    JSON.stringify(unPaused),
+  );
+  await call("stop");
+  await sleep(300);
 
   const sampleRate = (await page.evaluate("window.__capSampleRate")) as number;
   const chunks = (await page.evaluate("window.__pcmChunks")) as number[][];

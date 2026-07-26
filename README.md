@@ -37,8 +37,10 @@ Then jam:
 
 1. Start a new session in your MCP client (the server starts with it).
 2. Open **http://localhost:4747** and click **▶ Start** — one click is required by
-   browser autoplay policy. Leave the tab open; it shows the current pattern, tempo,
-   kit, and connection status.
+   browser autoplay policy. Leave the tab open: it shows the groove as a live step
+   grid (one row per drum, cells lit by velocity, a playhead sweeping in time) with
+   tempo, kit, and connection status, plus a play/pause button and the compiled
+   Strudel code behind a "show code" toggle.
 3. Ask for a beat: *"give me a beat like Brick House"*, *"a dusty 90 BPM boom-bap
    groove"*, *"four-on-the-floor house at 124"*.
 4. Iterate: *"busier hats"*, *"add ghost notes on the snare"*, *"halftime it"*,
@@ -112,6 +114,8 @@ Set it in the MCP registration, e.g.
 
 - **No sound** — you must click **▶ Start** on the page once per load (browser
   autoplay policy). The tab must stay open; audio keeps playing in a background tab.
+  Also check the page's own play/pause button (next to the tempo) isn't showing ▶ —
+  it pauses locally without the LLM knowing to restart.
 - **"No drummer page is connected"** — the tool result already says it: open
   http://localhost:4747 and click Start, then ask again.
 - **"port 4747 is already in use"** — another ai-drummer session (another Claude

@@ -18,12 +18,34 @@
     .dot.on { background: #4ade80; }
     .dot.warn { background: #fbbf24; }
     main { flex: 1; padding: 1.5rem; }
-    #meta { font-size: 1.6rem; margin-bottom: 1rem; }
+    #transport { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+    #playpause {
+      font: inherit; font-size: 1rem; width: 3.2rem; padding: 0.45rem 0; cursor: pointer;
+      background: #1c1c28; color: #4ade80; border: 1px solid #2a2a3a; border-radius: 8px;
+    }
+    #playpause:disabled { color: #555; cursor: default; }
+    #meta { font-size: 1.6rem; }
     #meta .bank { color: #7dd3fc; }
+    #grid {
+      background: #0c0c12; border: 1px solid #2a2a3a; border-radius: 8px;
+      padding: 1rem; overflow-x: auto; color: #667;
+      display: grid; gap: 3px; align-content: start; min-height: 6rem;
+      font-size: 0.75rem;
+    }
+    .grid-row { display: grid; grid-template-columns: 2.6em repeat(var(--steps), minmax(13px, 1.6em)); gap: 3px; align-items: stretch; }
+    .grid-label { color: #9aa; align-self: center; text-transform: uppercase; }
+    .grid-cell { aspect-ratio: 1; border-radius: 3px; background: #1a1a26; }
+    .grid-cell.beat { box-shadow: inset 2px 0 0 #262636; }
+    .grid-cell.barline { box-shadow: inset 2px 0 0 #3a3a52; }
+    .grid-cell.hit { background: #4ade80; opacity: var(--vel, 1); }
+    .grid-cell.ph { outline: 1px solid #7dd3fc; }
+    .grid-cell.hit.ph { background: #a7f3d0; }
+    #codebox { margin-top: 1rem; }
+    #codebox summary { cursor: pointer; color: #9aa; font-size: 0.8rem; }
     #code {
       background: #0c0c12; border: 1px solid #2a2a3a; border-radius: 8px;
       padding: 1rem; font-size: 0.8rem; white-space: pre; overflow-x: auto;
-      color: #a5b4fc; min-height: 6rem;
+      color: #a5b4fc; margin-top: 0.5rem;
     }
     #overlay {
       position: fixed; inset: 0; background: rgba(10, 10, 16, 0.92);
@@ -47,8 +69,15 @@
     </div>
   </header>
   <main>
-    <div id="meta">—</div>
-    <pre id="code">// waiting for a groove…</pre>
+    <div id="transport">
+      <button id="playpause" disabled title="play/pause">▶</button>
+      <div id="meta">—</div>
+    </div>
+    <div id="grid">// waiting for a groove…</div>
+    <details id="codebox">
+      <summary>show code</summary>
+      <pre id="code">// waiting for a groove…</pre>
+    </details>
   </main>
   <div id="overlay">
     <button id="arm">▶ Start</button>
