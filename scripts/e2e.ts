@@ -149,7 +149,22 @@ async function main() {
   check("update_groove ok", !update.isError, textOf(update));
   await sleep(7200);
 
+  // Phase C — tempo up.
+  mark("tempo");
+  const tempo = await call("set_tempo", { bpm: BPM_C });
+  check("set_tempo ok", !tempo.isError, textOf(tempo));
+  const np1 = JSON.parse(textOf(await call("now_playing")));
+  check(
+    "now_playing reflects the session",
+    np1.playing === true && np1.tempoBpm === BPM_C && np1.bank === "RolandTR808" &&
+      np1.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.length === 16,
+    `playing=${np1.playing} tempo=${np1.tempoBpm} bank=${np1.bank}`,
+  );
+
   // v1.2 FR-5: clicking a grid cell toggles the step on the SERVER's groove.
+  // Placed at the top of phase C, BEFORE the rateC DSP window opens at
+  // marks.tempo+2200 — the transient oh hit must not sit inside a measured
+  // window (it flaked the rateB/rateC comparison when it did).
   // The oh row has a hit only at 14 — click step 1 on, then off again.
   const ohCell = `#grid .grid-cell[data-drum="oh"][data-step="1"]`;
   await page.click(ohCell);
@@ -175,17 +190,6 @@ async function main() {
     `oh steps: ${ohHits(npEdit2).map((h) => h.step).join(",")}`,
   );
 
-  // Phase C — tempo up.
-  mark("tempo");
-  const tempo = await call("set_tempo", { bpm: BPM_C });
-  check("set_tempo ok", !tempo.isError, textOf(tempo));
-  const np1 = JSON.parse(textOf(await call("now_playing")));
-  check(
-    "now_playing reflects the session",
-    np1.playing === true && np1.tempoBpm === BPM_C && np1.bank === "RolandTR808" &&
-      np1.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.length === 16,
-    `playing=${np1.playing} tempo=${np1.tempoBpm} bank=${np1.bank}`,
-  );
   await sleep(5800); // ~3 bars at 125
 
   // Stop.

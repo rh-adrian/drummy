@@ -1,6 +1,7 @@
 # Grid Step Editing (click-to-toggle) — Spec
 
-Status: approved
+Status: in-progress — code + review complete; Adrian's live click check flips this
+to done
 Branch: main (D-12 carried over: straight to main, no PRs)
 
 ## Context Restore
@@ -77,6 +78,15 @@ last-writer-wins; persisting grooves.
   the last-hit-of-last-voice case).
 - D-21: Edits never resurrect playback when stopped (FR-3), mirroring v1's stop
   semantics.
+- D-22 (M-final review, accepted): clicking a cell while the page is *locally paused*
+  resumes audio — the edit push is a fresh evaluate and D-18's "a push implies intent
+  to hear it" applies. Deliberate: you hear the change you just made.
+- D-23 (M-final review, accepted stale-cell edges, extends D-20): (a) an *accepted*
+  edit while server-stopped flips the cell but a local ▶ replay of the pre-edit code
+  won't sound it until the next server push; (b) with NO groove loaded server-side
+  (stale grid on a reconnected page), a click can only be logged — no revert push is
+  possible, so the optimistic flip stands until the next play_groove. Both rare,
+  both self-heal on the next push; a push-based fix would violate D-21.
 
 ## Architecture & Dependency Chain
 
@@ -130,7 +140,8 @@ scripts/e2e.ts           — real-click checks                              [M2]
   deviations.
 - **Acceptance criteria:** zero unaddressed confirmed findings.
 - **Verification:** full suite + e2e green; report summarized to the user.
-- **Status:** pending
+- **Status:** done (2026-07-25, PASS-WITH-FINDINGS — all LOW/NIT, addressed same day;
+  see Progress Log)
 
 ## Progress Log
 
@@ -149,3 +160,10 @@ scripts/e2e.ts           — real-click checks                              [M2]
   else the newer cps is re-applied post-evaluate; queued evaluates keep their receipt
   seq; the old pendingCps state collapsed into lastCps/lastCpsSeq. lastCps still
   survives hush (matches server groove keeping its tempo across stop).
+- 2026-07-25 — **M-final done.** Staff review PASS-WITH-FINDINGS, nothing above LOW;
+  independently verified the msgSeq redesign across all message orderings and all
+  v1/v1.1 invariants. Addressed: e2e click block moved out of the rateB DSP window to
+  the top of phase C (it was tightening the same tempo check that caught the M2
+  regression — flake risk); the three behavioral edges recorded as D-22/D-23 rather
+  than coded around. Final: 111 unit tests + e2e 23/23 green. Awaiting Adrian's live
+  click check (he's jamming on this build now).
