@@ -350,3 +350,23 @@ describe("compileGroove — empty channels and mute (v1.6)", () => {
     expect(code).not.toContain("stack(");
   });
 });
+
+describe("compileGroove — master volume (v1.7 FR-7)", () => {
+  it("appends postgain when masterGain is not 1, and stays byte-identical at 1", () => {
+    const g = groove(fourOnFloor);
+    expect(compileGroove(g, { masterGain: 0.6 })).toMatch(/\.postgain\(0\.6\)$/);
+    expect(compileGroove(g, { masterGain: 1 })).toBe(compileGroove(g));
+    expect(compileGroove(g)).not.toContain("postgain");
+  });
+
+  it("wraps the whole wrandcat so fills obey the master too", () => {
+    const g = groove({
+      tempoBpm: 100,
+      bank: "RolandTR808",
+      voices: [{ drum: "bd", hits: [{ step: 0 }] }],
+      fills: [{ grid: { sd: "XxXx" } }],
+    });
+    const code = compileGroove(g, { masterGain: 0.5 });
+    expect(code).toMatch(/wrandcat\([\s\S]*\)\.postgain\(0\.5\)$/);
+  });
+});

@@ -231,6 +231,20 @@ export function createDrummerServer(
   let groove: Groove | null = null;
   let playing = false;
 
+  // Master volume (v1.7 FR-7): SESSION state, not groove state — a new groove
+  // from the LLM must not blast past the user's level. Monitoring, so it is
+  // deliberately NOT on the undo stack.
+  let masterGain = 1;
+  function evalPush(g: Groove, origin?: "page"): SidecarPush {
+    return {
+      type: "evaluate",
+      code: compileGroove(g, { masterGain }),
+      groove: g,
+      ...(origin ? { origin } : {}),
+      masterGain,
+    };
+  }
+
   // Undo (v1.6 FR-4, D-42): snapshots of the groove BEFORE each successful
   // page edit. Cleared whenever an LLM tool mutates the groove — undo only
   // spans consecutive human actions, never silently reverts the model's work.
@@ -254,6 +268,16 @@ export function createDrummerServer(
         return;
       }
 
+      if (edit.kind === "setMasterGain") {
+        if (!Number.isFinite(edit.gain) || edit.gain < 0 || edit.gain > 1.5) {
+          console.error(`[drummer] refused page edit ${what}: master gain must be between 0 and 1.5`);
+          return;
+        }
+        masterGain = edit.gain;
+        if (playing) sidecar.push(evalPush(groove, "page"));
+        return;
+      }
+
       if (edit.kind === "undo") {
         const prev = undoStack.pop();
         if (!prev) {
@@ -263,7 +287,7 @@ export function createDrummerServer(
         groove = prev;
         // While stopped: state-only, like every edit (D-21) — the replay was
         // cleared by hush and must stay clear so reloads stay silent.
-        if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove, origin: "page" });
+        if (playing) sidecar.push(evalPush(groove, "page"));
         return;
       }
 
@@ -277,7 +301,7 @@ export function createDrummerServer(
         groove = { ...groove, tempoBpm: edit.bpm };
         if (playing) {
           sidecar.push({ type: "setCps", cps: edit.bpm / 240 });
-          sidecar.setLastEvaluate(compileGroove(groove), groove);
+          sidecar.setLastEvaluate(compileGroove(groove, { masterGain }), groove);
         }
         return;
       }
@@ -295,14 +319,14 @@ export function createDrummerServer(
       if (!res.ok) {
         console.error(`[drummer] refused page edit ${what}: ${res.reason}`);
         // Snap the page's optimistic state back to reality (FR-4).
-        if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove, origin: "page" });
+        if (playing) sidecar.push(evalPush(groove, "page"));
         return;
       }
       undoSnapshot(groove);
       groove = res.groove;
       // Never resurrect playback from an edit while stopped (D-21) — it just
       // waits in state for the next play/update.
-      if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove, origin: "page" });
+      if (playing) sidecar.push(evalPush(groove, "page"));
     });
   }
 
@@ -364,11 +388,7 @@ export function createDrummerServer(
       if (failed) return failed;
       const parsed = parseGroove(input);
       if (!parsed.ok) return err(`Invalid groove — ${parsed.error}`);
-      (sidecar as SidecarHandle).push({
-        type: "evaluate",
-        code: compileGroove(parsed.groove),
-        groove: parsed.groove,
-      });
+      (sidecar as SidecarHandle).push(evalPush(parsed.groove));
       groove = parsed.groove;
       playing = true;
       clearUndo(); // D-42: undo never crosses an LLM mutation
@@ -484,11 +504,7 @@ export function createDrummerServer(
       };
       const parsed = parseGroove(merged);
       if (!parsed.ok) return err(`Invalid update — ${parsed.error}. The groove is unchanged.`);
-      (sidecar as SidecarHandle).push({
-        type: "evaluate",
-        code: compileGroove(parsed.groove),
-        groove: parsed.groove,
-      });
+      (sidecar as SidecarHandle).push(evalPush(parsed.groove));
       groove = parsed.groove;
       clearUndo(); // D-42
       return ok(`Updated: ${playingSummary(parsed.groove)}\n\n${renderGrid(parsed.groove)}`);
@@ -517,7 +533,7 @@ export function createDrummerServer(
       // Keep the replayed evaluate's setcpm (and grid groove) in sync so a page
       // that reloads comes back at the new tempo, not the one baked into the
       // old code.
-      live.setLastEvaluate(compileGroove(groove), groove);
+      live.setLastEvaluate(compileGroove(groove, { masterGain }), groove);
       clearUndo(); // D-42
       return ok(`Tempo is now ${bpm} BPM.`);
     },
@@ -540,7 +556,7 @@ export function createDrummerServer(
         return err(`Unknown bank "${bank}" — valid banks are: ${BANK_NAMES.join(", ")}.`);
       }
       const next = { ...(groove as Groove), bank };
-      (sidecar as SidecarHandle).push({ type: "evaluate", code: compileGroove(next), groove: next });
+      (sidecar as SidecarHandle).push(evalPush(next));
       groove = next;
       clearUndo(); // D-42
       return ok(`Kit is now ${bank}. ${playingSummary(next)}`);
@@ -621,6 +637,7 @@ export function createDrummerServer(
           playing,
           tempoBpm: groove?.tempoBpm ?? null,
           bank: groove?.bank ?? null,
+          masterGain,
           groove,
           pageConnected: sidecar.pageConnected(),
           pageUrl: sidecar.url,

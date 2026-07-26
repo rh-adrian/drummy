@@ -14,7 +14,7 @@ export const DEFAULT_PORT = 4747;
 /** Server → page messages. `groove` (the parsed groove JSON) drives the page's
  * step grid; old pages ignore it (v1.1 FR-1, additive). */
 export type SidecarPush =
-  | { type: "evaluate"; code: string; groove?: Groove; origin?: "page" | "llm" }
+  | { type: "evaluate"; code: string; groove?: Groove; origin?: "page" | "llm"; masterGain?: number }
   | { type: "hush" }
   | { type: "setCps"; cps: number };
 // evaluate.origin (v1.6 FR-6): "page" = a human edit bounced back — a paused
@@ -36,6 +36,7 @@ export type PageEdit =
   | { kind: "clearTrack"; drum: string }
   | { kind: "setTempo"; bpm: number }
   | { kind: "setFillsEnabled"; enabled: boolean }
+  | { kind: "setMasterGain"; gain: number }
   | { kind: "undo" };
 
 export interface Sidecar {
@@ -192,6 +193,8 @@ export async function startSidecar(
           editHandler?.({ kind: "setTempo", bpm: (msg as { bpm: number }).bpm });
         } else if (type === "setFills" && typeof (msg as { enabled?: unknown }).enabled === "boolean") {
           editHandler?.({ kind: "setFillsEnabled", enabled: (msg as { enabled: boolean }).enabled });
+        } else if (type === "setMasterGain" && typeof gain === "number") {
+          editHandler?.({ kind: "setMasterGain", gain });
         } else if (type === "undo") {
           editHandler?.({ kind: "undo" });
         }

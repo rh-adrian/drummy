@@ -27,11 +27,20 @@ function acousticSlot(vel: number): number {
   return Math.min(ACOUSTIC_SLOTS - 1, Math.floor(vel * ACOUSTIC_SLOTS));
 }
 
-export function compileGroove(groove: Groove): string {
+export interface CompileOptions {
+  /** Session master volume (v1.7 FR-7): emitted as .postgain() on the whole
+   * pattern — monitoring level, separate from velocities and track faders. */
+  masterGain?: number;
+}
+
+export function compileGroove(groove: Groove, options: CompileOptions = {}): string {
   const totalSteps = groove.bars * groove.resolution;
   const acoustic = groove.bank === ACOUSTIC_BANK;
   const head = `setcpm(${formatNumber(groove.tempoBpm)}/4)`;
   const slow = groove.bars > 1 ? `.slow(${groove.bars})` : "";
+  const master = options.masterGain !== undefined && options.masterGain !== 1
+    ? `.postgain(${formatNumber(options.masterGain)})`
+    : "";
 
   const base = compileStack(groove.voices, groove, totalSteps, acoustic);
   const fills = groove.fillsEnabled && groove.fills ? groove.fills : [];
@@ -39,7 +48,7 @@ export function compileGroove(groove: Groove): string {
   if (fills.length === 0) {
     // Everything muted/empty still needs VALID code — silence, not stack().
     if (base === "silence") return `${head}\n$: silence`;
-    return `${head}\n$: ${base}${slow}`;
+    return `${head}\n$: ${base}${slow}${master}`;
   }
 
   // Fills (v1.7 D-46): one complete pattern per variant, chosen per cycle by
@@ -51,7 +60,7 @@ export function compileGroove(groove: Groove): string {
   // Base weight so P(any fill) = fillChance; each fill weighs 1.
   const baseWeight = formatNumber((fills.length * (1 - groove.fillChance)) / groove.fillChance);
   const entries = [`[${base}, ${baseWeight}]`, ...variants.map((v) => `[${v}, 1]`)];
-  return `${head}\n$: wrandcat(\n${entries.join(",\n")}\n)${slow}`;
+  return `${head}\n$: wrandcat(\n${entries.join(",\n")}\n)${slow}${master}`;
 }
 
 function compileStack(voices: Voice[], groove: Groove, totalSteps: number, acoustic: boolean): string {

@@ -225,7 +225,13 @@ function connect() {
     } catch {
       return;
     }
-    if (msg.type === "evaluate") applyEvaluate(msg.code, msg.groove ?? null, ++msgSeq, msg.origin ?? null);
+    if (msg.type === "evaluate") {
+      // Master slider tracks the server's session level (survives reloads).
+      if (Number.isFinite(msg.masterGain) && document.activeElement !== el("master")) {
+        el("master").value = String(Math.round(msg.masterGain * 100));
+      }
+      applyEvaluate(msg.code, msg.groove ?? null, ++msgSeq, msg.origin ?? null);
+    }
     else if (msg.type === "hush") applyHush();
     else if (msg.type === "setCps" && Number.isFinite(msg.cps) && msg.cps > 0) {
       if (repl) repl.setCps(msg.cps); // pre-init: applied on repl-resolve / after the queued evaluate
@@ -427,6 +433,12 @@ function buildGrid() {
 el("undo").addEventListener("click", () => {
   if (ws?.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify({ type: "undo" }));
+});
+// Master volume (v1.7 FR-7): session-level on the server (a new groove keeps
+// your level), applied as .postgain on the whole pattern. Send on release.
+el("master").addEventListener("change", () => {
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: "setMasterGain", gain: Number(el("master").value) / 100 }));
 });
 el("fills").addEventListener("change", () => {
   if (ws?.readyState !== WebSocket.OPEN) return;

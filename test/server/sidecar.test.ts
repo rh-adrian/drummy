@@ -350,3 +350,17 @@ describe("startSidecar", () => {
     ]);
     ws.close();
   });
+
+  it("routes setMasterGain frames and forwards masterGain on evaluates (v1.7 FR-7)", async () => {
+    const s = await start();
+    const edits: unknown[] = [];
+    s.onEdit((e) => edits.push(e));
+    const client = await connect(PORT);
+    client.ws.send(JSON.stringify({ type: "setMasterGain", gain: 0.5 }));
+    client.ws.send(JSON.stringify({ type: "setMasterGain" })); // malformed
+    await new Promise((r) => setTimeout(r, 80));
+    expect(edits).toEqual([{ kind: "setMasterGain", gain: 0.5 }]);
+    s.push({ type: "evaluate", code: "$: silence", masterGain: 0.5 } as never);
+    expect(await client.next()).toEqual({ type: "evaluate", code: "$: silence", masterGain: 0.5 });
+    client.ws.close();
+  });

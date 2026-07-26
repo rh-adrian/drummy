@@ -1020,3 +1020,42 @@ describe("fills (v1.7)", () => {
     expect(play.description).toMatch(/downbeat/i);
   });
 });
+
+describe("master volume (v1.7 FR-7)", () => {
+  const edit = (e: object) => e as never;
+
+  it("setMasterGain re-pushes with postgain, session-scoped, visible in now_playing", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!(edit({ kind: "setMasterGain", gain: 0.5 }));
+    const push = sidecar.pushes.at(-1)!;
+    expect(push.type).toBe("evaluate");
+    if (push.type === "evaluate") {
+      expect(push.code).toContain(".postgain(0.5)");
+      expect((push as { masterGain?: number }).masterGain).toBe(0.5);
+    }
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.masterGain).toBe(0.5);
+    // survives a NEW groove from the LLM (session state, not groove state)
+    await client.callTool({ name: "play_groove", arguments: { groove: { ...GROOVE, tempoBpm: 120 } } });
+    const push2 = sidecar.pushes.at(-1)!;
+    if (push2.type === "evaluate") expect(push2.code).toContain(".postgain(0.5)");
+  });
+
+  it("is NOT undone by the undo button (monitoring, not music)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!(edit({ kind: "setMasterGain", gain: 0.5 }));
+    sidecar.editHandler!(edit({ kind: "undo" })); // stack is empty → no-op
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.masterGain).toBe(0.5);
+  });
+
+  it("rejects out-of-range master gain without changing state", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!(edit({ kind: "setMasterGain", gain: 3 }));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.masterGain).toBe(1);
+  });
+});

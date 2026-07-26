@@ -110,6 +110,9 @@ undo-able, default true — Adrian asked for the UI toggle 2026-07-26.
 D-50: `fillChance` default 0.25, range 0.05–1 — "every once in a while" ≈
 every ~4th loop-end, jittered by the cycle-seeded rand; 1.0 exists mainly so
 e2e can force a fill every cycle deterministically.
+D-52: master volume is server session state applied via .postgain, excluded
+from undo — 2026-07-26 (monitoring level, not musical content; survives new
+grooves from the LLM by design).
 D-51: fills are authored in grid notation only — one authoring path (M1
 finding, 2026-07-26); the parsed {steps, voices} form is accepted purely for
 parseGroove idempotency across edit merges.
@@ -177,6 +180,13 @@ M1 = core. M2 = server + page + teaching + e2e. M-final = staff review.
 - **Status:** pending
 
 ## Progress Log
+
+- 2026-07-26: FR-7 added at Adrian's request, same day: master volume slider
+  (🔊, 0-150%) in the transport. SESSION state on the server (not groove state
+  — the LLM playing a new song keeps the user's level), compiled as
+  .postgain() on the whole pattern (fills obey it too), page slider tracks
+  evaluate broadcasts, deliberately NOT on the undo stack (monitoring, not
+  music — D-52). 234 unit tests, e2e 44 checks.
 
 - 2026-07-26: M2 done — setFills routing + setFillsEnabled in the edit switch
   (undo-able, origin page), playingSummary fills note, FILL_GUIDE teaching,

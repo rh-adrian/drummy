@@ -357,6 +357,22 @@ async function main() {
     `visible=${fillsVisible}, off=${npOff.groove.fillsEnabled}, undone=${npBack.groove.fillsEnabled}`,
   );
 
+  // v1.7 FR-7: the master volume slider drives a session-level postgain.
+  await page.evaluate(`(() => {
+    const m = document.querySelector("#master");
+    m.value = 50;
+    m.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
+  await sleep(400);
+  const npMaster = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
+  check("master slider sets the session masterGain (v1.7 FR-7)", npMaster.masterGain === 0.5, `masterGain=${npMaster.masterGain}`);
+  await page.evaluate(`(() => {
+    const m = document.querySelector("#master");
+    m.value = 100;
+    m.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
+  await sleep(300);
+
   // D2: velocity ramp, sd ONLY, loud→soft so each hit's long tail decays
   // before anything quieter follows: FF (1.0) → F (0.7) → MP (0.4) → ghost
   // (0.1), one hit every 2 beats across 2 bars (~1.43s apart at 84 BPM).
