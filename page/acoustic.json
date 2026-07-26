@@ -1,0 +1,123 @@
+{
+  "_base": "https://raw.githubusercontent.com/studiorack/salamander-drumkit/8b6faa8847b4c02f4b5dd42c1836c28ffbe89d33/Samples/",
+  "Acoustic_bd": [
+    "kick_OH_P_1.flac",
+    "kick_OH_P_2.flac",
+    "kick_OH_F_1.flac",
+    "kick_OH_F_2.flac",
+    "kick_OH_F_3.flac",
+    "kick_OH_FF_1.flac",
+    "kick_OH_FF_2.flac",
+    "kick_OH_FF_3.flac"
+  ],
+  "Acoustic_sd": [
+    "snare_OH_Ghost_1.flac",
+    "snare_OH_Ghost_2.flac",
+    "snare_OH_MP_1.flac",
+    "snare_OH_MP_2.flac",
+    "snare_OH_F_1.flac",
+    "snare_OH_F_2.flac",
+    "snare_OH_FF_1.flac",
+    "snare_OH_FF_2.flac"
+  ],
+  "Acoustic_rim": [
+    "snareStick_OH_F_1.flac",
+    "snareStick_OH_F_2.flac",
+    "snareStick_OH_F_3.flac",
+    "snareStick_OH_F_4.flac",
+    "snareStick_OH_F_5.flac",
+    "snareStick_OH_F_6.flac",
+    "snareStick_OH_F_7.flac",
+    "snareStick_OH_F_8.flac"
+  ],
+  "Acoustic_hh": [
+    "hihatClosed_OH_P_1.flac",
+    "hihatClosed_OH_P_2.flac",
+    "hihatClosed_OH_P_3.flac",
+    "hihatClosed_OH_P_4.flac",
+    "hihatClosed_OH_F_1.flac",
+    "hihatClosed_OH_F_2.flac",
+    "hihatClosed_OH_F_3.flac",
+    "hihatClosed_OH_F_4.flac"
+  ],
+  "Acoustic_oh": [
+    "hihatSemiOpen1_OH_P_1.flac",
+    "hihatSemiOpen2_OH_P_1.flac",
+    "hihatSemiOpen3_OH_F_1.flac",
+    "hihatSemiOpen4_OH_F_1.flac",
+    "hihatSemiOpen5_OH_F_1.flac",
+    "hihatSemiOpen6_OH_F_1.flac",
+    "hihatOpen_OH_F_1.flac",
+    "hihatOpen_OH_FF_1.flac"
+  ],
+  "Acoustic_lt": [
+    "loTom_OH_PP_1.flac",
+    "loTom_OH_PP_2.flac",
+    "loTom_OH_MP_1.flac",
+    "loTom_OH_MP_2.flac",
+    "loTom_OH_MP_3.flac",
+    "loTom_OH_FF_1.flac",
+    "loTom_OH_FF_2.flac",
+    "loTom_OH_FF_3.flac"
+  ],
+  "Acoustic_ht": [
+    "hiTom_OH_P_1.flac",
+    "hiTom_OH_P_2.flac",
+    "hiTom_OH_F_1.flac",
+    "hiTom_OH_F_2.flac",
+    "hiTom_OH_F_3.flac",
+    "hiTom_OH_FF_1.flac",
+    "hiTom_OH_FF_2.flac",
+    "hiTom_OH_FF_3.flac"
+  ],
+  "Acoustic_rd": [
+    "ride2_OH_PP_1.flac",
+    "ride2_OH_PP_2.flac",
+    "ride2_OH_MP_1.flac",
+    "ride2_OH_MP_2.flac",
+    "ride2_OH_MP_3.flac",
+    "ride2_OH_FF_1.flac",
+    "ride2_OH_FF_2.flac",
+    "ride2_OH_FF_3.flac"
+  ],
+  "Acoustic_cr": [
+    "crash1_OH_P_1.flac",
+    "crash1_OH_P_2.flac",
+    "crash1_OH_P_3.flac",
+    "crash1_OH_P_4.flac",
+    "crash1_OH_FF_1.flac",
+    "crash1_OH_FF_2.flac",
+    "crash1_OH_FF_3.flac",
+    "crash1_OH_FF_4.flac"
+  ],
+  "Acoustic_cb": [
+    "cowbell_P_1.flac",
+    "cowbell_P_2.flac",
+    "cowbell_MP_1.flac",
+    "cowbell_MP_2.flac",
+    "cowbell_MP_3.flac",
+    "cowbell_FF_1.flac",
+    "cowbell_FF_2.flac",
+    "cowbell_FF_3.flac"
+  ],
+  "Acoustic_ch": [
+    "china1_OH_FF_1.flac",
+    "china1_OH_FF_2.flac",
+    "china1_OH_FF_3.flac",
+    "china1_OH_FF_4.flac",
+    "china1_OH_FF_5.flac",
+    "china1_OH_FF_6.flac",
+    "china1_OH_FF_7.flac",
+    "china1_OH_FF_8.flac"
+  ],
+  "Acoustic_sp": [
+    "splash1_OH_P_1.flac",
+    "splash1_OH_P_2.flac",
+    "splash1_OH_P_3.flac",
+    "splash1_OH_P_4.flac",
+    "splash1_OH_F_1.flac",
+    "splash1_OH_F_2.flac",
+    "splash1_OH_F_3.flac",
+    "splash1_OH_F_4.flac"
+  ]
+}

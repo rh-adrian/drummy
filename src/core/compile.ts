@@ -12,18 +12,36 @@ import type { Groove, Voice } from "./groove.js";
 // Per-hit velocity rides an aligned .gain() grid. Per-hit micro-timing and
 // swing (applied to odd "off" steps) can't vary per event inside one mini
 // pattern, so each voice is split into groups sharing the same total delay.
+//
+// The Acoustic bank is velocity-layered (v1.3): page/acoustic.json gives every
+// voice exactly ACOUSTIC_SLOTS samples ordered soft→loud, so velocity also
+// picks the recording via an aligned .n() grid. Its gain curve is softened
+// (the recordings already carry the dynamics) but keeps enough slope that
+// velocity still shapes level continuously within a layer.
+
+const ACOUSTIC_BANK = "Acoustic";
+const ACOUSTIC_SLOTS = 8;
+
+function acousticSlot(vel: number): number {
+  return Math.min(ACOUSTIC_SLOTS - 1, Math.floor(vel * ACOUSTIC_SLOTS));
+}
+
+function acousticGain(vel: number): number {
+  return 0.6 + 0.4 * vel;
+}
 
 export function compileGroove(groove: Groove): string {
   const totalSteps = groove.bars * groove.resolution;
+  const acoustic = groove.bank === ACOUSTIC_BANK;
 
-  const entries = groove.voices.flatMap((voice) => compileVoice(voice, groove.swing, totalSteps));
+  const entries = groove.voices.flatMap((voice) => compileVoice(voice, groove.swing, totalSteps, acoustic));
 
   const stack = `stack(\n  ${entries.join(",\n  ")}\n).bank("${groove.bank}")${groove.bars > 1 ? `.slow(${groove.bars})` : ""}`;
 
   return `setcpm(${formatNumber(groove.tempoBpm)}/4)\n$: ${stack}`;
 }
 
-function compileVoice(voice: Voice, swing: number, totalSteps: number): string[] {
+function compileVoice(voice: Voice, swing: number, totalSteps: number, acoustic: boolean): string[] {
   // Group hits by their total delay in steps (swing on off-steps + micro).
   const groups = new Map<number, Voice["hits"]>();
   for (const hit of voice.hits) {
@@ -39,11 +57,15 @@ function compileVoice(voice: Voice, swing: number, totalSteps: number): string[]
       const hits = groups.get(delaySteps)!;
       const mini: string[] = Array(totalSteps).fill("~");
       const gains: string[] = Array(totalSteps).fill("~");
+      const slots: string[] = Array(totalSteps).fill("~");
       for (const hit of hits) {
         mini[hit.step] = voice.drum;
-        gains[hit.step] = formatNumber(hit.vel);
+        gains[hit.step] = formatNumber(acoustic ? acousticGain(hit.vel) : hit.vel);
+        slots[hit.step] = String(acousticSlot(hit.vel));
       }
-      let entry = `s("${mini.join(" ")}").gain("${gains.join(" ")}")`;
+      let entry = `s("${mini.join(" ")}")`;
+      if (acoustic) entry += `.n("${slots.join(" ")}")`;
+      entry += `.gain("${gains.join(" ")}")`;
       if (delaySteps > 0) entry += `.late(${formatNumber(delaySteps)}/${totalSteps})`;
       else if (delaySteps < 0) entry += `.early(${formatNumber(-delaySteps)}/${totalSteps})`;
       return entry;

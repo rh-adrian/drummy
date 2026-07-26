@@ -24,4 +24,15 @@ describe("kits", () => {
       expect(drum.name.length).toBeGreaterThan(2);
     }
   });
+
+  it("includes the Acoustic bank (v1.3)", () => {
+    expect(BANKS.map((b) => b.name)).toContain("Acoustic");
+  });
+
+  it("includes the v1.3 voices cowbell, china, splash", () => {
+    const abbrs = DRUMS.map((d) => d.abbr);
+    for (const expected of ["cb", "ch", "sp"]) {
+      expect(abbrs).toContain(expected);
+    }
+  });
 });

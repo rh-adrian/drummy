@@ -8,10 +8,12 @@ export interface Drum {
   name: string;
 }
 
-// Sample banks from the tidal-drum-machines library, loaded at page runtime from
-// Strudel's CDN. Names must match the bank prefixes in tidal-drum-machines.json
-// (e.g. RolandTR808_bd). Descriptions are written for the LLM choosing a kit.
+// Sample banks loaded at page runtime: tidal-drum-machines from Strudel's CDN
+// (names must match the bank prefixes in tidal-drum-machines.json, e.g.
+// RolandTR808_bd) plus the Acoustic kit indexed by page/acoustic.json (see
+// SAMPLES.md). Descriptions are written for the LLM choosing a kit.
 export const BANKS: Bank[] = [
+  { name: "Acoustic", description: "Real acoustic kit (Salamander) — velocity picks the actual soft/medium/hard recording, real ghost notes, semi-open→open hat. Rock, funk, soul, anything human" },
   { name: "RolandTR808", description: "Boomy, deep analog kick, snappy snare, iconic cowbell — hip-hop, electro, trap, R&B" },
   { name: "RolandTR909", description: "Punchy kick, cracking snare, sizzling open hats — house, techno, club music" },
   { name: "RolandTR707", description: "Crisp 12-bit digital kit, tight and clean — 80s pop, freestyle, early house" },
@@ -37,6 +39,9 @@ export const DRUMS: Drum[] = [
   { abbr: "ht", name: "high tom" },
   { abbr: "rd", name: "ride cymbal" },
   { abbr: "cr", name: "crash cymbal" },
+  { abbr: "cb", name: "cowbell" },
+  { abbr: "ch", name: "china cymbal" },
+  { abbr: "sp", name: "splash cymbal" },
 ];
 
 export const BANK_NAMES = BANKS.map((b) => b.name);

@@ -1,6 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { parseGroove } from "../../src/core/groove.js";
 
+const acousticGroove = {
+  tempoBpm: 100,
+  bank: "Acoustic",
+  voices: [
+    { drum: "bd", hits: [{ step: 0 }] },
+    { drum: "cb", hits: [{ step: 2, vel: 0.7 }] },
+    { drum: "ch", hits: [{ step: 4 }] },
+    { drum: "sp", hits: [{ step: 8, vel: 0.5 }] },
+  ],
+};
+
 const validGroove = {
   tempoBpm: 100,
   swing: 0.12,
@@ -29,6 +40,11 @@ const validGroove = {
 };
 
 describe("parseGroove", () => {
+  it("accepts the Acoustic bank and the v1.3 voices cb/ch/sp", () => {
+    const result = parseGroove(acousticGroove);
+    expect(result.ok).toBe(true);
+  });
+
   it("accepts a valid groove and applies defaults", () => {
     const result = parseGroove(validGroove);
     expect(result.ok).toBe(true);

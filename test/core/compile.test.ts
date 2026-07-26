@@ -195,3 +195,77 @@ describe("compileGroove", () => {
     expect(code).toMatch(/\$:\s*stack\(/);
   });
 });
+
+describe("compileGroove — Acoustic velocity layers (v1.3)", () => {
+  const acoustic = (vel: number) =>
+    groove({
+      tempoBpm: 100,
+      bank: "Acoustic",
+      voices: [{ drum: "sd", hits: [{ step: 4, vel }] }],
+    });
+
+  it("emits an aligned n() grid picking the slot from velocity: min(7, floor(vel*8))", () => {
+    const cases: Array<[number, number]> = [
+      [0.1, 0],
+      [0.25, 2],
+      [0.5, 4],
+      [0.8, 6],
+      [0.95, 7],
+      [1, 7],
+    ];
+    for (const [vel, slot] of cases) {
+      const code = compileGroove(acoustic(vel));
+      const n = code.match(/\.n\("([^"]+)"\)/)?.[1];
+      expect(n, `vel ${vel}`).toBeDefined();
+      const values = n!.split(" ");
+      expect(values).toHaveLength(16);
+      expect(values[4], `vel ${vel}`).toBe(String(slot));
+      expect(values[0]).toBe("~");
+    }
+  });
+
+  it("softens the gain curve so recorded dynamics are not double-applied", () => {
+    // full accent still reaches 1; quiet hits keep more gain than raw vel
+    const at = (vel: number) => {
+      const code = compileGroove(acoustic(vel));
+      return Number(code.match(/\.gain\("([^"]+)"\)/)![1].split(" ")[4]);
+    };
+    expect(at(1)).toBeCloseTo(1);
+    expect(at(0.25)).toBeGreaterThan(0.25);
+    expect(at(0.25)).toBeLessThan(1);
+    expect(at(0.7)).toBeGreaterThan(at(0.25));
+  });
+
+  it("keeps machine-bank output free of n() and byte-identical gain", () => {
+    const machine = {
+      tempoBpm: 100,
+      bank: "LinnDrum",
+      voices: [{ drum: "sd", hits: [{ step: 4, vel: 0.25 }, { step: 12, vel: 0.95 }] }],
+    };
+    const code = compileGroove(groove(machine));
+    expect(code).not.toContain(".n(");
+    const gain = code.match(/\.gain\("([^"]+)"\)/)![1].split(" ");
+    expect(gain[4]).toBe("0.25");
+    expect(gain[12]).toBe("0.95");
+  });
+
+  it("n grid respects multi-bar grids and multiple voices", () => {
+    const code = compileGroove(
+      groove({
+        tempoBpm: 100,
+        bank: "Acoustic",
+        bars: 2,
+        voices: [
+          { drum: "bd", hits: [{ step: 0, vel: 1 }, { step: 16, vel: 0.4 }] },
+          { drum: "hh", hits: [{ step: 2, vel: 0.6 }] },
+        ],
+      }),
+    );
+    const ns = [...code.matchAll(/\.n\("([^"]+)"\)/g)].map((m) => m[1].split(" "));
+    expect(ns).toHaveLength(2);
+    for (const n of ns) expect(n).toHaveLength(32);
+    expect(ns[0][0]).toBe("7");
+    expect(ns[0][16]).toBe("3");
+    expect(ns[1][2]).toBe("4");
+  });
+});
