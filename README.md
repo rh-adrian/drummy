@@ -9,6 +9,21 @@ ghost notes are real ghost-note captures, and the open hat blooms from semi-open
 sizzle to a full wash as you lean in. Say *"more hi-hat, make it swing"* and the
 change lands at the next bar boundary, click-free.
 
+## Why this exists
+
+This is a side project, and the goal is **not to replace drummers**. The goal is to
+**unblock a musician mid-composition**.
+
+If you're a guitarist working out a riff, the moment you stop to click through a
+drum-machine UI or finger-tap a pad pattern, you've left the flow. Here you just
+*say what you want* — "give me a lazy half-time shuffle", "more ghost notes",
+"open the hat on the 3rd sixteenth of every beat" — and keep playing while the beat
+reshapes itself under you. It's the difference between programming a drum machine and
+directing a session drummer who never gets tired of "one more time, but busier."
+
+When it's time to record the real thing, hire the real drummer — they'll play it
+better than this ever will. This just keeps you moving until then.
+
 There's no app and no UI to learn: it's an [MCP](https://modelcontextprotocol.io) server,
 so any MCP client — Claude Code, Claude Desktop — is the chat surface. The LLM authors
 the groove from its own song and music-theory knowledge; this server compiles it to
