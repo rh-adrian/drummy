@@ -25,8 +25,10 @@ src/index.ts    stdio entry: McpServer + sidecar lifecycle
 page/           browser client: @strudel/web via CDN, bar-quantized swaps, heartbeat,
                 step-grid display + playhead (grid.js pure math), local play/pause,
                 click-to-cycle steps (off→x→X→g, v1.5) + per-track volume faders
-                (trackGain) + drummer's count header (server owns every merge —
-                src/core/edit.ts),
+                (trackGain) + mute/clear/undo/BPM controls (v1.6; undo stack lives
+                in tools.ts, cleared on LLM mutations) + drummer's count header
+                (server owns every merge — src/core/edit.ts; empty channels are
+                legal state; page-origin evaluates never un-pause a paused page),
                 acoustic.json (Salamander sample index — velocity-layered Acoustic
                 bank; regenerate with scripts/build-acoustic-map.ts)
 scripts/        dev-jam.ts (no-MCP dev loop)  capture.ts + e2e.ts (audio verification)

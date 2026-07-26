@@ -811,3 +811,132 @@ describe("track volume and cycle edits (v1.5)", () => {
     expect(play.description).toMatch(/& of 3/);
   });
 });
+
+// --------------------------------------------------------------------------
+// v1.6: mute, clear, undo, page tempo
+// --------------------------------------------------------------------------
+
+describe("channel controls (v1.6)", () => {
+  const edit = (e: object) => e as never;
+
+  it("muteTrack silences the voice in the code, keeps state, renders [muted] (FR-2)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!(edit({ kind: "muteTrack", drum: "hh" }));
+    const push = sidecar.pushes.at(-1)!;
+    expect(push.type).toBe("evaluate");
+    if (push.type === "evaluate") {
+      expect(push.code).not.toContain("hh");
+      const g = push.groove as { voices: Array<{ drum: string; muted?: boolean; hits: unknown[] }> };
+      const hh = g.voices.find((v) => v.drum === "hh")!;
+      expect(hh.muted).toBe(true);
+      expect(hh.hits.length).toBeGreaterThan(0);
+    }
+    expect(text(await client.callTool({ name: "now_playing", arguments: {} }))).toContain("[muted]");
+    expect((push as { origin?: string }).origin).toBe("page");
+  });
+
+  it("clearTrack empties the hits but keeps the row (FR-3)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!(edit({ kind: "clearTrack", drum: "hh" }));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    const hh = np.groove.voices.find((v: { drum: string }) => v.drum === "hh");
+    expect(hh).toBeDefined();
+    expect(hh.hits).toEqual([]);
+  });
+
+  it("setTempo edit applies set_tempo semantics: setCps push + refreshed replay (FR-5)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!(edit({ kind: "setTempo", bpm: 120 }));
+    const push = sidecar.pushes.at(-1)!;
+    expect(push.type).toBe("setCps");
+    if (push.type === "setCps") expect(push.cps).toBeCloseTo(0.5, 6);
+    expect(sidecar.replayCode).toContain("setcpm(120/4)");
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.tempoBpm).toBe(120);
+  });
+
+  it("rejects an out-of-range setTempo edit without touching the groove", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    const before = sidecar.pushes.length;
+    sidecar.editHandler!(edit({ kind: "setTempo", bpm: 500 }));
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.tempoBpm).toBe(96);
+    // only the revert re-push (if any) may have happened; state must be intact
+    expect(sidecar.pushes.length).toBeLessThanOrEqual(before + 1);
+  });
+
+  it("undo walks back page edits in order and stops at the stack bottom (FR-4)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!(edit({ kind: "setTrackGain", drum: "hh", gain: 0.6 }));
+    sidecar.editHandler!(edit({ kind: "cycleStep", drum: "hh", step: 6 }));
+    let np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").hits.map((h: { step: number }) => h.step)).toContain(6);
+
+    sidecar.editHandler!(edit({ kind: "undo" })); // reverts the cycle click
+    np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    const hh = np.groove.voices.find((v: { drum: string }) => v.drum === "hh");
+    expect(hh.hits.map((h: { step: number }) => h.step)).not.toContain(6);
+    expect(hh.trackGain).toBe(0.6);
+
+    sidecar.editHandler!(edit({ kind: "undo" })); // reverts the fader
+    np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").trackGain).toBe(1);
+
+    const before = sidecar.pushes.length;
+    sidecar.editHandler!(edit({ kind: "undo" })); // empty stack → no-op
+    expect(sidecar.pushes.length).toBe(before);
+  });
+
+  it("LLM mutations clear the undo stack (FR-4/D-42)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!(edit({ kind: "setTrackGain", drum: "hh", gain: 0.6 }));
+    await client.callTool({ name: "update_groove", arguments: { tempoBpm: 110 } });
+    const before = sidecar.pushes.length;
+    sidecar.editHandler!(edit({ kind: "undo" }));
+    expect(sidecar.pushes.length).toBe(before); // nothing to undo — stack cleared
+    const np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.tempoBpm).toBe(110);
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").trackGain).toBe(0.6);
+  });
+
+  it("page edits carry origin 'page'; LLM plays carry no origin (FR-6/NFR-4)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    expect((sidecar.pushes[0] as { origin?: string }).origin).toBeUndefined();
+    sidecar.editHandler!(edit({ kind: "cycleStep", drum: "hh", step: 6 }));
+    expect((sidecar.pushes.at(-1) as { origin?: string }).origin).toBe("page");
+  });
+
+  it("update_groove voice replacement preserves muted like trackGain (FR-2/D-38)", async () => {
+    const { client, sidecar } = await setup();
+    await client.callTool({ name: "play_groove", arguments: { groove: GROOVE } });
+    sidecar.editHandler!(edit({ kind: "muteTrack", drum: "hh" }));
+    await client.callTool({
+      name: "update_groove",
+      arguments: { voices: [{ drum: "hh", hits: [{ step: 0 }] }] },
+    });
+    let np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").muted).toBe(true);
+    await client.callTool({
+      name: "update_groove",
+      arguments: { voices: [{ drum: "hh", hits: [{ step: 0 }], muted: false }] },
+    });
+    np = stateJson(await client.callTool({ name: "now_playing", arguments: {} }));
+    expect(np.groove.voices.find((v: { drum: string }) => v.drum === "hh").muted).toBe(false);
+  });
+
+  it("teaches hits: [] vs removeDrums and mentions mute/undo (FR-1 teaching)", async () => {
+    const { client } = await setup();
+    const tools = await client.listTools();
+    const update = tools.tools.find((t) => t.name === "update_groove")!;
+    expect(update.description).toContain("hits: []");
+    expect(update.description).toMatch(/muted|mute/);
+    expect(update.description).toMatch(/undo/i);
+  });
+});

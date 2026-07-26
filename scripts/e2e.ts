@@ -249,6 +249,70 @@ async function main() {
     `trackGain=${cbGain}`,
   );
 
+  // v1.5 M-final MINOR-2: the zoom slider is a pure view control.
+  const zoomVal = (await page.evaluate(`(() => {
+    const z = document.querySelector("#zoom");
+    z.value = 150;
+    z.dispatchEvent(new Event("input", { bubbles: true }));
+    return getComputedStyle(document.querySelector("#grid")).getPropertyValue("--zoom").trim();
+  })()`)) as string;
+  check("zoom slider scales the grid via --zoom (v1.5)", zoomVal === "1.5", `--zoom=${zoomVal}`);
+
+  // v1.6 FR-2: mute silences the voice in the compiled code and tags the render.
+  await page.click('.mute-btn[data-drum="cb"]');
+  await sleep(400);
+  // Server state is immediate; the page's code swap is bar-quantized (up to a
+  // full 2-bar cycle), so assert the authoritative view — the compiler's
+  // muted-voice skip is proven by unit test.
+  const mutedText = textOf(await call("now_playing"));
+  const npMuted = JSON.parse(mutedText.split("\n\nGrid:")[0]);
+  const cbMuted = npMuted.groove.voices.find((v: { drum: string }) => v.drum === "cb");
+  check(
+    "mute flags the voice and renders [muted] (v1.6)",
+    mutedText.includes("[muted]") && cbMuted.muted === true,
+    `muted=${cbMuted.muted}`,
+  );
+  await page.click('.mute-btn[data-drum="cb"]'); // unmute again
+  await sleep(400);
+
+  // v1.6 FR-3/FR-4: clear empties the channel but keeps the row; undo restores it.
+  await page.click('.clear-btn[data-drum="cb"]');
+  await sleep(400);
+  const npCleared = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
+  const cbCleared = npCleared.groove.voices.find((v: { drum: string }) => v.drum === "cb");
+  check("clear empties the channel but keeps its row (v1.6)", cbCleared !== undefined && cbCleared.hits.length === 0, JSON.stringify(cbCleared?.hits));
+  await page.click("#undo");
+  await sleep(400);
+  const npUndone = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
+  const cbUndone = npUndone.groove.voices.find((v: { drum: string }) => v.drum === "cb");
+  check("undo restores the cleared channel (v1.6)", cbUndone.hits.length > 0, `hits=${cbUndone.hits.length}`);
+
+  // v1.6 FR-5: the BPM input drives tempo through the server.
+  await page.evaluate(`(() => {
+    const b = document.querySelector("#bpm");
+    b.value = 120;
+    b.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
+  await sleep(400);
+  const npBpm = JSON.parse(textOf(await call("now_playing")).split("\n\nGrid:")[0]);
+  check("BPM input changes the tempo server-side (v1.6)", npBpm.tempoBpm === 120, `tempoBpm=${npBpm.tempoBpm}`);
+
+  // v1.6 FR-6: my own edit while paused updates the grid but stays paused.
+  await page.click("#playpause"); // pause
+  await sleep(200);
+  const sdCell = `#grid .grid-cell[data-drum="sd"][data-step="1"]`;
+  await page.click(sdCell);
+  await sleep(400);
+  const pausedState = (await page.evaluate(
+    "JSON.stringify({paused: window.__ai.state.paused, sd: window.__ai.state.groove.voices.find(v => v.drum==='sd').hits.some(h => h.step===1)})",
+  )) as string;
+  check("editing while paused stays paused, grid updates (v1.6)", pausedState === '{"paused":true,"sd":true}', pausedState);
+  await page.click("#playpause"); // resume for phase D2
+  await sleep(300);
+  // undo the paused click so D2 starts from known state (D2 replaces the groove anyway)
+  await page.click("#undo");
+  await sleep(300);
+
   // D2: velocity ramp, sd ONLY, loud→soft so each hit's long tail decays
   // before anything quieter follows: FF (1.0) → F (0.7) → MP (0.4) → ghost
   // (0.1), one hit every 2 beats across 2 bars (~1.43s apart at 84 BPM).

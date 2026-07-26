@@ -6,7 +6,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { parseGroove, type Groove } from "../core/groove.js";
 import { gridToVoices, renderGrid } from "../core/grid.js";
 import { compileGroove } from "../core/compile.js";
-import { cycleStep, setTrackGain } from "../core/edit.js";
+import { clearTrack, cycleStep, muteTrack, setTrackGain } from "../core/edit.js";
 import { BANKS, BANK_NAMES, DRUMS, DRUM_ABBRS } from "../core/kits.js";
 import type { PageEdit, PageStatus, SidecarPush } from "./sidecar.js";
 
@@ -97,6 +97,13 @@ const voiceShape = z
   .object({
     drum: z.string().optional().describe(`Drum voice. One of: ${DRUM_ABBRS.join(", ")}. REQUIRED.`),
     hits: z.array(hitShape).optional().describe("The hits for this drum, one per step max. REQUIRED."),
+    muted: z
+      .boolean()
+      .optional()
+      .describe(
+        "Channel mute (page M button). Muted rows show as [muted] — the mute belongs to the user; leave it unless " +
+          "asked. Default false.",
+      ),
     trackGain: z
       .number()
       .optional()
@@ -203,29 +210,76 @@ export function createDrummerServer(
   let groove: Groove | null = null;
   let playing = false;
 
+  // Undo (v1.6 FR-4, D-42): snapshots of the groove BEFORE each successful
+  // page edit. Cleared whenever an LLM tool mutates the groove — undo only
+  // spans consecutive human actions, never silently reverts the model's work.
+  const UNDO_CAP = 20;
+  let undoStack: Groove[] = [];
+  function undoSnapshot(g: Groove) {
+    undoStack.push(structuredClone(g));
+    if (undoStack.length > UNDO_CAP) undoStack.shift();
+  }
+  function clearUndo() {
+    undoStack = [];
+  }
+
   // Page edits (v1.2 clicks, v1.5 cycle + faders): the human and the LLM share
   // this session groove, so now_playing/update_groove see them automatically.
   if (!isUnavailable(sidecar)) {
     sidecar.onEdit((edit) => {
-      const what = edit.kind === "cycleStep" ? `${edit.drum}@${edit.step}` : `${edit.drum} vol ${edit.gain}`;
+      const what = JSON.stringify(edit);
       if (!groove) {
         console.error(`[drummer] ignored page edit ${what}: no groove loaded`);
         return;
       }
+
+      if (edit.kind === "undo") {
+        const prev = undoStack.pop();
+        if (!prev) {
+          console.error("[drummer] undo: nothing to undo");
+          return;
+        }
+        groove = prev;
+        // While stopped: state-only, like every edit (D-21) — the replay was
+        // cleared by hush and must stay clear so reloads stay silent.
+        if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove, origin: "page" });
+        return;
+      }
+
+      if (edit.kind === "setTempo") {
+        // set_tempo semantics (D-44): no restart, bar phase kept.
+        if (!Number.isFinite(edit.bpm) || edit.bpm < 40 || edit.bpm > 300) {
+          console.error(`[drummer] refused page edit ${what}: bpm must be between 40 and 300`);
+          return;
+        }
+        undoSnapshot(groove);
+        groove = { ...groove, tempoBpm: edit.bpm };
+        if (playing) {
+          sidecar.push({ type: "setCps", cps: edit.bpm / 240 });
+          sidecar.setLastEvaluate(compileGroove(groove), groove);
+        }
+        return;
+      }
+
       const res =
         edit.kind === "cycleStep"
           ? cycleStep(groove, edit.drum, edit.step)
-          : setTrackGain(groove, edit.drum, edit.gain);
+          : edit.kind === "setTrackGain"
+            ? setTrackGain(groove, edit.drum, edit.gain)
+            : edit.kind === "muteTrack"
+              ? muteTrack(groove, edit.drum)
+              : clearTrack(groove, edit.drum);
       if (!res.ok) {
         console.error(`[drummer] refused page edit ${what}: ${res.reason}`);
         // Snap the page's optimistic state back to reality (FR-4).
-        if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove });
+        if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove, origin: "page" });
         return;
       }
+      undoSnapshot(groove);
       groove = res.groove;
       // Never resurrect playback from an edit while stopped (D-21) — it just
       // waits in state for the next play/update.
-      if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove });
+      if (playing) sidecar.push({ type: "evaluate", code: compileGroove(groove), groove, origin: "page" });
     });
   }
 
@@ -288,6 +342,7 @@ export function createDrummerServer(
       });
       groove = parsed.groove;
       playing = true;
+      clearUndo(); // D-42: undo never crosses an LLM mutation
       return ok(`Playing: ${playingSummary(parsed.groove)}\n\n${renderGrid(parsed.groove)}`);
     },
   );
@@ -301,7 +356,9 @@ export function createDrummerServer(
         "matched by drum name), remove drums, or change tempo/swing/bank/bars/resolution. Only send what changes — " +
         "everything else is kept. The edit applies at the next bar boundary, click-free. Use this for iteration " +
         "('more hi-hat', 'add ghost notes', 'make it swing'). Grid rows use play_groove's notation (X/x/o/g letters); " +
-        "to remove a drum use removeDrums, not an all-rest row. " +
+        "to remove a drum use removeDrums, not an all-rest row. A voice sent with hits: [] clears the pattern but " +
+        "KEEPS the row (users can also clear/mute rows and undo their own page edits from the page — [muted] and " +
+        "[vol N%] tags are theirs to keep). " +
         VELOCITY_GUIDE,
       inputSchema: {
         tempoBpm: z.number().optional().describe("New tempo in BPM, 40-300."),
@@ -363,11 +420,12 @@ export function createDrummerServer(
       // replacement always keeps it) — the user's mix survives LLM edits.
       const currentByDrum = new Map(current.voices.map((v) => [v.drum, v]));
       editVoices = editVoices.map((v0) => {
-        const v = v0 as { drum?: string; trackGain?: number };
+        const v = v0 as { drum?: string; trackGain?: number; muted?: boolean };
         const prev = v.drum ? currentByDrum.get(v.drum) : undefined;
         if (!prev) return v0;
-        const explicit = edits.grid ? undefined : v.trackGain;
-        return { ...(v0 as object), trackGain: explicit ?? prev.trackGain };
+        const explicitGain = edits.grid ? undefined : v.trackGain;
+        const explicitMuted = edits.grid ? undefined : v.muted;
+        return { ...(v0 as object), trackGain: explicitGain ?? prev.trackGain, muted: explicitMuted ?? prev.muted };
       });
       const removed = new Set(edits.removeDrums ?? []);
       const replacements = new Map(editVoices.map((v) => [(v as { drum: string }).drum, v]));
@@ -393,6 +451,7 @@ export function createDrummerServer(
         groove: parsed.groove,
       });
       groove = parsed.groove;
+      clearUndo(); // D-42
       return ok(`Updated: ${playingSummary(parsed.groove)}\n\n${renderGrid(parsed.groove)}`);
     },
   );
@@ -420,6 +479,7 @@ export function createDrummerServer(
       // that reloads comes back at the new tempo, not the one baked into the
       // old code.
       live.setLastEvaluate(compileGroove(groove), groove);
+      clearUndo(); // D-42
       return ok(`Tempo is now ${bpm} BPM.`);
     },
   );
@@ -443,6 +503,7 @@ export function createDrummerServer(
       const next = { ...(groove as Groove), bank };
       (sidecar as SidecarHandle).push({ type: "evaluate", code: compileGroove(next), groove: next });
       groove = next;
+      clearUndo(); // D-42
       return ok(`Kit is now ${bank}. ${playingSummary(next)}`);
     },
   );

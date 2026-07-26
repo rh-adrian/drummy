@@ -25,8 +25,19 @@
     }
     #playpause:disabled { color: #555; cursor: default; }
     #meta { font-size: 1.6rem; }
-    #zoomctl { margin-left: auto; display: flex; align-items: center; gap: 0.4rem; color: #9aa; }
+    #bpmctl { margin-left: auto; display: flex; align-items: center; gap: 0.4rem; color: #9aa; font-size: 0.9rem; }
+    #bpmctl input { width: 4.5rem; background: #14141c; color: #dde; border: 1px solid #2a2a3a; border-radius: 4px; padding: 0.25rem 0.4rem; font: inherit; }
+    #undo { background: #14141c; color: #9aa; border: 1px solid #2a2a3a; border-radius: 4px; padding: 0.25rem 0.6rem; cursor: pointer; font-size: 1rem; }
+    #undo:hover { color: #dde; border-color: #4ade80; }
+    #zoomctl { display: flex; align-items: center; gap: 0.4rem; color: #9aa; }
     #zoomctl input { width: 9rem; accent-color: #7dd3fc; cursor: pointer; }
+    .grid-head { display: flex; align-items: center; gap: 3px; min-width: 0; }
+    .grid-head .grid-name { flex: 1; }
+    .row-btn { background: #14141c; color: #667; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 0.65em; line-height: 1; padding: 2px 4px; cursor: pointer; flex: none; }
+    .row-btn:hover { color: #dde; border-color: #4ade80; }
+    .mute-btn.active { background: #7c2d3e; color: #fecdd3; border-color: #be5060; }
+    .grid-row.muted .grid-cell { opacity: 0.3; }
+    .grid-row.muted .grid-name { color: #556; text-decoration: line-through; }
     #meta .bank { color: #7dd3fc; }
     #grid {
       background: #0c0c12; border: 1px solid #2a2a3a; border-radius: 8px;
@@ -84,6 +95,8 @@
     <div id="transport">
       <button id="playpause" disabled title="play/pause">▶</button>
       <div id="meta">—</div>
+      <label id="bpmctl" title="tempo">BPM <input id="bpm" type="number" min="40" max="300" step="1" /></label>
+      <button id="undo" title="undo your last page edit">↩</button>
       <label id="zoomctl" title="grid size">🔍 <input id="zoom" type="range" min="70" max="220" value="100" /></label>
     </div>
     <div id="grid">// waiting for a groove…</div>

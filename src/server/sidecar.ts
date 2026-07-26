@@ -14,9 +14,12 @@ export const DEFAULT_PORT = 4747;
 /** Server → page messages. `groove` (the parsed groove JSON) drives the page's
  * step grid; old pages ignore it (v1.1 FR-1, additive). */
 export type SidecarPush =
-  | { type: "evaluate"; code: string; groove?: Groove }
+  | { type: "evaluate"; code: string; groove?: Groove; origin?: "page" | "llm" }
   | { type: "hush" }
   | { type: "setCps"; cps: number };
+// evaluate.origin (v1.6 FR-6): "page" = a human edit bounced back — a paused
+// page applies it silently. Absent/"llm" = the model changed the music, which
+// un-pauses (v1.1 D-18).
 
 /** Page → server heartbeat. */
 export interface PageStatus {
@@ -24,10 +27,15 @@ export interface PageStatus {
   [key: string]: unknown;
 }
 
-/** Page → server edit requests: cell cycle (v1.2/v1.5) and track fader (v1.5 FR-3). */
+/** Page → server edit requests: cell cycle (v1.2/v1.5), track fader (v1.5),
+ * mute/clear/tempo/undo (v1.6). */
 export type PageEdit =
   | { kind: "cycleStep"; drum: string; step: number }
-  | { kind: "setTrackGain"; drum: string; gain: number };
+  | { kind: "setTrackGain"; drum: string; gain: number }
+  | { kind: "muteTrack"; drum: string }
+  | { kind: "clearTrack"; drum: string }
+  | { kind: "setTempo"; bpm: number }
+  | { kind: "undo" };
 
 export interface Sidecar {
   port: number;
@@ -177,6 +185,12 @@ export async function startSidecar(
           editHandler?.({ kind: "cycleStep", drum, step });
         } else if (type === "setTrackGain" && typeof drum === "string" && typeof gain === "number") {
           editHandler?.({ kind: "setTrackGain", drum, gain });
+        } else if ((type === "muteTrack" || type === "clearTrack") && typeof drum === "string") {
+          editHandler?.({ kind: type, drum });
+        } else if (type === "setTempo" && typeof (msg as { bpm?: unknown }).bpm === "number") {
+          editHandler?.({ kind: "setTempo", bpm: (msg as { bpm: number }).bpm });
+        } else if (type === "undo") {
+          editHandler?.({ kind: "undo" });
         }
       }
     });

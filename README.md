@@ -45,10 +45,13 @@ Then jam:
    header — Bar 1 · 1 e & a … — cells lit by velocity, a playhead sweeping in time) with
    tempo, kit, and connection status, plus a play/pause button and the compiled
    Strudel code behind a "show code" toggle. **Click any cell to cycle it: off →
-   normal → STRESS → ghost → off**, and drag a row's fader to mix that drum — both
-   land in the same groove the LLM works on (the fader as `trackGain`, which the LLM
-   sees as `[vol N%]` and preserves), so "make it swing" after your tweak keeps your
-   tweak.
+   normal → STRESS → ghost → off**; each row also has a volume fader, an **M**
+   mute, and a **✕** clear button, with **↩ undo** (your last ~20 page edits) and
+   a **BPM input** in the transport. Everything lands in the same groove the LLM
+   works on (`trackGain`/`muted` show up to it as `[vol N%]`/`[muted]` and survive
+   its edits), so "make it swing" after your tweak keeps your tweak. Pausing is
+   respected: your own edits update the grid silently; only the LLM playing
+   something new resumes audio.
 3. Ask for a beat: *"give me a beat like Brick House"*, *"a dusty 90 BPM boom-bap
    groove"*, *"four-on-the-floor house at 124"*.
 4. Iterate: *"busier hats"*, *"add ghost notes on the snare"*, *"halftime it"*,

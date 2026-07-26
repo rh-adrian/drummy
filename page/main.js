@@ -89,11 +89,26 @@ function schedulerCps() {
 // the lead window, we take the following bar line instead.
 const SWAP_LEAD_MS = 300;
 
-function applyEvaluate(code, groove = null, seq = ++msgSeq) {
+function applyEvaluate(code, groove = null, seq = ++msgSeq, origin = null) {
   // Warm the bank's samples immediately — by swap time (up to a bar away) the
   // fetches have had time to land, so the new kit's first hits don't drop.
   const bank = code.match(/\.bank\("(\w+)"\)/)?.[1] ?? null;
   if (bank) warmBank(bank);
+
+  // Pause discipline (v1.6 FR-6/D-43): my own edit bouncing back must not
+  // resume audio — update the grid/state silently; the resume button plays
+  // state.code, so the edit is heard when I choose. LLM-origin evaluates
+  // keep un-pausing (D-18).
+  if (state.paused && origin === "page" && state.armed && repl) {
+    clearTimeout(state.pendingSwap);
+    state.code = code;
+    state.groove = groove;
+    state.tempo = code.match(/setcpm\(([\d.]+)\/4\)/)?.[1] ?? state.tempo;
+    state.bank = bank ?? state.bank;
+    render();
+    sendStatus();
+    return;
+  }
 
   if (!state.armed || !repl) {
     state.queued = { code, groove, seq };
@@ -210,7 +225,7 @@ function connect() {
     } catch {
       return;
     }
-    if (msg.type === "evaluate") applyEvaluate(msg.code, msg.groove ?? null, ++msgSeq);
+    if (msg.type === "evaluate") applyEvaluate(msg.code, msg.groove ?? null, ++msgSeq, msg.origin ?? null);
     else if (msg.type === "hush") applyHush();
     else if (msg.type === "setCps" && Number.isFinite(msg.cps) && msg.cps > 0) {
       if (repl) repl.setCps(msg.cps); // pre-init: applied on repl-resolve / after the queued evaluate
@@ -349,15 +364,31 @@ function buildGrid() {
 
   for (const row of model.rows) {
     const rowEl = document.createElement("div");
-    rowEl.className = "grid-row";
+    rowEl.className = row.muted ? "grid-row muted" : "grid-row";
     rowEl.style.setProperty("--steps", String(model.steps));
     const label = document.createElement("span");
     label.className = "grid-label";
+    const head = document.createElement("span");
+    head.className = "grid-head";
     const name = document.createElement("span");
     name.className = "grid-name";
     name.textContent = row.label ?? row.drum;
     name.title = row.drum; // hover shows the abbreviation the LLM/tools use
-    label.appendChild(name);
+    head.appendChild(name);
+    // Channel controls (v1.6 FR-2/FR-3): mute toggle + clear-with-undo.
+    const mute = document.createElement("button");
+    mute.className = row.muted ? "row-btn mute-btn active" : "row-btn mute-btn";
+    mute.textContent = "M";
+    mute.title = row.muted ? `unmute ${row.label}` : `mute ${row.label}`;
+    mute.dataset.drum = row.drum;
+    head.appendChild(mute);
+    const clear = document.createElement("button");
+    clear.className = "row-btn clear-btn";
+    clear.textContent = "✕";
+    clear.title = `clear all ${row.label} hits (↩ undoes)`;
+    clear.dataset.drum = row.drum;
+    head.appendChild(clear);
+    label.appendChild(head);
     // Track fader (v1.5 FR-3): position always reflects the broadcast groove;
     // sends on release (change), not while dragging (NFR-4).
     const vol = document.createElement("input");
@@ -390,6 +421,22 @@ function buildGrid() {
     grid.appendChild(rowEl);
   }
 }
+
+// ---- undo + tempo (v1.6 FR-4/FR-5): both are requests to the server, which
+// owns the groove; the next broadcast is authoritative.
+el("undo").addEventListener("click", () => {
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: "undo" }));
+});
+el("bpm").addEventListener("change", () => {
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  const bpm = Number(el("bpm").value);
+  if (!Number.isFinite(bpm) || bpm < 40 || bpm > 300) {
+    el("bpm").value = state.tempo ?? ""; // snap back; server enforces the same range
+    return;
+  }
+  ws.send(JSON.stringify({ type: "setTempo", bpm }));
+});
 
 // ---- grid zoom (v1.5 FR-7 addition): a pure view preference — scales the
 // whole grid live via the --zoom CSS variable; never touches the groove.
@@ -424,6 +471,26 @@ el("grid").addEventListener("change", (event) => {
 // STRESS → ghost → off), and broadcasts the result. The cell shows the
 // optimistic next tier instantly; the next broadcast is authoritative.
 el("grid").addEventListener("click", (event) => {
+  // Row buttons (v1.6): mute toggles instantly (optimistic dim), clear
+  // darkens the row's cells — the broadcast is authoritative for both.
+  const btn = event.target.closest?.(".row-btn");
+  if (btn?.dataset.drum) {
+    if (ws?.readyState !== WebSocket.OPEN) return;
+    const row = btn.closest(".grid-row");
+    if (btn.classList.contains("mute-btn")) {
+      ws.send(JSON.stringify({ type: "muteTrack", drum: btn.dataset.drum }));
+      row?.classList.toggle("muted");
+      btn.classList.toggle("active");
+    } else {
+      ws.send(JSON.stringify({ type: "clearTrack", drum: btn.dataset.drum }));
+      row?.querySelectorAll(".grid-cell.hit").forEach((c) => {
+        c.classList.remove("hit");
+        c.style.removeProperty("--vel");
+        delete c.dataset.vel;
+      });
+    }
+    return;
+  }
   const cell = event.target.closest?.(".grid-cell");
   if (!cell || !cell.dataset.drum) return;
   if (ws?.readyState !== WebSocket.OPEN) return; // no server, no edit
@@ -468,6 +535,9 @@ function render() {
   if (state.tempo) meta.push(`${state.tempo} BPM`);
   if (state.bank) meta.push(`<span class="bank">${state.bank}</span>`);
   el("meta").innerHTML = meta.join(" · ") || "—";
+  // BPM input tracks the authoritative tempo — but never mid-typing (FR-5).
+  const bpmEl = el("bpm");
+  if (document.activeElement !== bpmEl && state.tempo) bpmEl.value = state.tempo;
   const btn = el("playpause");
   btn.disabled = !state.armed || !repl || !state.code;
   btn.textContent = state.playing ? "❚❚" : "▶";

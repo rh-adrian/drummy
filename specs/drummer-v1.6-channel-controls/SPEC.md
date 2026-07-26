@@ -173,7 +173,7 @@ M2 = server + page + teaching + e2e. M-final = staff review.
   undoes/changes BPM and pauses+edits without auto-play.
 - **Isolation note:** origin field is additive (old pages ignore unknown
   fields); new message types are opt-in; undo stack is session state only.
-- **Status:** pending
+- **Status:** done (2026-07-26; Adrian's live check pending, see log)
 
 ### M-final: Staff-level peer review
 - **Scope:** full v1.6 diff + this SPEC.md
@@ -186,6 +186,19 @@ M2 = server + page + teaching + e2e. M-final = staff review.
 
 ## Progress Log
 
+- 2026-07-26: M2 done — sidecar routes muteTrack/clearTrack/setTempo/undo +
+  evaluate origin tag; tools.ts undo stack (snapshot-before-edit, cap 20,
+  cleared on play/update/set_kit/set_tempo), page setTempo edit with set_tempo
+  semantics, muted joins trackGain in D-38 preservation, teaching text
+  (hits: [] vs removeDrums, [muted]/undo ownership); page M/✕ row buttons +
+  ↩ undo + BPM input (tracks broadcasts, never mid-typing) + muted row
+  styling + paused/page-origin silent apply. 207 unit tests; e2e 38 checks
+  (incl. v1.5 MINOR-2 zoom check). Deviations: (1) mute e2e check asserts the
+  server's muted flag + [muted] render, not the page's swapped code — the
+  code swap is bar-quantized (up to a 2-bar cycle) and the compiler skip is
+  unit-tested; (2) edits while STOPPED remain state-only (no setLastEvaluate)
+  so hush-cleared replay stays clear and reloads stay silent — D-21 upheld;
+  (3) undo while stopped also state-only.
 - 2026-07-26: M1 done — hits min-0 + muted in schema, compiler skips muted/
   hitless voices and falls back to `$: silence`, clearTrack/muteTrack pure
   merges, cycleStep keeps empty voices (v1.2 drop tests replaced per D-40),

@@ -304,3 +304,32 @@ describe("startSidecar", () => {
     expect(res.status).toBe(200);
   });
 });
+
+  it("routes v1.6 channel-control frames to onEdit and tags nothing extra (FR-2..5)", async () => {
+    const s = await start();
+    const edits: unknown[] = [];
+    s.onEdit((e) => edits.push(e));
+    const { ws } = await connect(PORT);
+    ws.send(JSON.stringify({ type: "muteTrack", drum: "hh" }));
+    ws.send(JSON.stringify({ type: "clearTrack", drum: "cb" }));
+    ws.send(JSON.stringify({ type: "setTempo", bpm: 110 }));
+    ws.send(JSON.stringify({ type: "undo" }));
+    ws.send(JSON.stringify({ type: "muteTrack" })); // malformed: no drum
+    ws.send(JSON.stringify({ type: "setTempo", bpm: "fast" })); // malformed bpm
+    await new Promise((r) => setTimeout(r, 80));
+    expect(edits).toEqual([
+      { kind: "muteTrack", drum: "hh" },
+      { kind: "clearTrack", drum: "cb" },
+      { kind: "setTempo", bpm: 110 },
+      { kind: "undo" },
+    ]);
+    ws.close();
+  });
+
+  it("forwards the evaluate origin tag to pages (v1.6 FR-6)", async () => {
+    const s = await start();
+    const client = await connect(PORT);
+    s.push({ type: "evaluate", code: "$: silence", origin: "page" } as never);
+    expect(await client.next()).toEqual({ type: "evaluate", code: "$: silence", origin: "page" });
+    client.ws.close();
+  });
