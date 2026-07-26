@@ -177,3 +177,39 @@ describe("parseGroove", () => {
     expect(parseGroove({ ...validGroove, resolution: 24, voices: [{ drum: "bd", hits: [{ step: 23 }] }] }).ok).toBe(true);
   });
 });
+
+describe("trackGain (v1.5 FR-1)", () => {
+  const base = { tempoBpm: 100, bank: "RolandTR808" };
+
+  it("accepts trackGain 0..1.5 and defaults it to 1", () => {
+    const withGain = parseGroove({
+      ...base,
+      voices: [{ drum: "hh", hits: [{ step: 0 }], trackGain: 0.6 }],
+    });
+    expect(withGain.ok).toBe(true);
+    if (withGain.ok) expect(withGain.groove.voices[0].trackGain).toBe(0.6);
+
+    const without = parseGroove({ ...base, voices: [{ drum: "hh", hits: [{ step: 0 }] }] });
+    expect(without.ok).toBe(true);
+    if (without.ok) expect(without.groove.voices[0].trackGain).toBe(1);
+
+    for (const edge of [0, 1.5]) {
+      const r = parseGroove({ ...base, voices: [{ drum: "hh", hits: [{ step: 0 }], trackGain: edge }] });
+      expect(r.ok, `trackGain ${edge}`).toBe(true);
+    }
+  });
+
+  it("rejects out-of-range trackGain with an actionable message", () => {
+    for (const bad of [-0.1, 1.6]) {
+      const r = parseGroove({ ...base, voices: [{ drum: "hh", hits: [{ step: 0 }], trackGain: bad }] });
+      expect(r.ok, `trackGain ${bad}`).toBe(false);
+      if (!r.ok) expect(r.error).toContain("trackGain");
+    }
+  });
+
+  it("applies trackGain default 1 to grid-notation voices too", () => {
+    const r = parseGroove({ ...base, grid: { hh: "x---------------" } });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.groove.voices[0].trackGain).toBe(1);
+  });
+});

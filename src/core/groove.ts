@@ -26,6 +26,13 @@ const voiceSchema = z.object({
       message: `unknown drum — valid drums are: ${DRUM_ABBRS.join(", ")}`,
     }),
   hits: z.array(hitSchema).min(1, { message: "a voice needs at least one hit" }),
+  // Track volume (v1.5, D-35): a mix fader, NOT dynamics — multiplies the
+  // compiled gain but never affects which velocity layer plays.
+  trackGain: z
+    .number()
+    .min(0, { message: "trackGain must be between 0 and 1.5 (0 = muted, 1 = unity, >1 = boost)" })
+    .max(1.5, { message: "trackGain must be between 0 and 1.5 (0 = muted, 1 = unity, >1 = boost)" })
+    .default(1),
 });
 
 const grooveSchema = z.object({

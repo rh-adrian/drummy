@@ -22,6 +22,7 @@ describe("gridToVoices", () => {
           { step: 2, vel: 0.5, micro: 0 },
           { step: 3, vel: 0.25, micro: 0 },
         ],
+        trackGain: 1, // v1.5: grid rows enter at unity mix
       },
     ]);
   });
@@ -251,5 +252,21 @@ describe("row order stays in sync with the page grid (M-final M-3)", () => {
       .map((line) => line.split(":")[0].trim());
     const pageOrder = gridModel(g).rows.map((r: { drum: string }) => r.drum);
     expect(renderOrder).toEqual(pageOrder);
+  });
+});
+
+describe("renderGrid trackGain annotation (v1.5 FR-6)", () => {
+  it("appends [vol N%] to rows whose trackGain is not 1", () => {
+    const g = groove({
+      tempoBpm: 100,
+      bank: "Acoustic",
+      voices: [
+        { drum: "hh", hits: [{ step: 0, vel: 0.7 }], trackGain: 0.6 },
+        { drum: "bd", hits: [{ step: 0, vel: 1 }] },
+      ],
+    });
+    const lines = renderGrid(g).split("\n");
+    expect(lines[0]).toBe("hh:  x---|----|----|---- [vol 60%]");
+    expect(lines[1]).toBe("bd:  X---|----|----|----");
   });
 });

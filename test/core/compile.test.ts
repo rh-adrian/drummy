@@ -273,3 +273,32 @@ describe("compileGroove — Acoustic velocity layers (v1.3)", () => {
     expect(ns[1][2]).toBe("4");
   });
 });
+
+describe("compileGroove — trackGain (v1.5)", () => {
+  it("multiplies gain by trackGain, leaving velocity untouched", () => {
+    const code = compileGroove(
+      groove({
+        tempoBpm: 100,
+        bank: "RolandTR808",
+        voices: [{ drum: "hh", hits: [{ step: 0, vel: 0.7 }, { step: 2, vel: 1 }], trackGain: 0.5 }],
+      }),
+    );
+    const gain = code.match(/\.gain\("([^"]+)"\)/)![1].split(" ");
+    expect(gain[0]).toBe("0.35");
+    expect(gain[2]).toBe("0.5");
+  });
+
+  it("keeps Acoustic n() slots a function of velocity only (D-35)", () => {
+    const code = compileGroove(
+      groove({
+        tempoBpm: 100,
+        bank: "Acoustic",
+        voices: [{ drum: "sd", hits: [{ step: 4, vel: 0.95 }], trackGain: 0.3 }],
+      }),
+    );
+    const n = code.match(/\.n\("([^"]+)"\)/)![1].split(" ");
+    const gain = code.match(/\.gain\("([^"]+)"\)/)![1].split(" ");
+    expect(n[4]).toBe("7"); // still the hard-hit recording
+    expect(Number(gain[4])).toBeCloseTo(0.285); // played quietly
+  });
+});

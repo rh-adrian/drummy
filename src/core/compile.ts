@@ -57,7 +57,9 @@ function compileVoice(voice: Voice, swing: number, totalSteps: number, acoustic:
       const slots: string[] = Array(totalSteps).fill("~");
       for (const hit of hits) {
         mini[hit.step] = voice.drum;
-        gains[hit.step] = formatNumber(hit.vel);
+        // trackGain is mix, not dynamics (v1.5 D-35): it scales the level but
+        // the Acoustic slot below stays a function of velocity alone.
+        gains[hit.step] = formatNumber(hit.vel * (voice.trackGain ?? 1));
         slots[hit.step] = String(acousticSlot(hit.vel));
       }
       let entry = `s("${mini.join(" ")}")`;

@@ -120,3 +120,55 @@ describe("row labels (v1.4 FR-7: full instrument names on the UI)", () => {
     expect(model.rows[0].label).toBe("zz");
   });
 });
+
+describe("countHeader (v1.5 FR-5: drummer's count row)", () => {
+  it("counts 1 e & a per beat at resolution 16", async () => {
+    const { countHeader } = await import("../../page/grid.js");
+    const h = countHeader(1, 16);
+    expect(h).toHaveLength(16);
+    expect(h.slice(0, 8).map((c) => c.label)).toEqual(["1", "e", "&", "a", "2", "e", "&", "a"]);
+    expect(h[12].label).toBe("4");
+    expect(h[0]).toMatchObject({ beatStart: true, barStart: true, bar: 1 });
+    expect(h[4]).toMatchObject({ beatStart: true, barStart: false });
+    expect(h[5]).toMatchObject({ beatStart: false });
+  });
+
+  it("counts 1 & a per beat at triplet resolution 12", async () => {
+    const { countHeader } = await import("../../page/grid.js");
+    const h = countHeader(1, 12);
+    expect(h.slice(0, 6).map((c) => c.label)).toEqual(["1", "&", "a", "2", "&", "a"]);
+  });
+
+  it("counts 1 & at resolution 8 and beat numbers with dots at 24/32", async () => {
+    const { countHeader } = await import("../../page/grid.js");
+    expect(countHeader(1, 8).map((c) => c.label).slice(0, 4)).toEqual(["1", "&", "2", "&"]);
+    const h24 = countHeader(1, 24);
+    expect(h24[0].label).toBe("1");
+    expect(h24[6].label).toBe("2");
+    expect(h24.slice(1, 6).every((c) => c.label === "·")).toBe(true);
+    const h32 = countHeader(1, 32);
+    expect(h32[8].label).toBe("2");
+    expect(h32[1].label).toBe("·");
+  });
+
+  it("marks bar starts and numbers bars across multi-bar grooves", async () => {
+    const { countHeader } = await import("../../page/grid.js");
+    const h = countHeader(2, 16);
+    expect(h).toHaveLength(32);
+    expect(h[16]).toMatchObject({ label: "1", barStart: true, bar: 2 });
+    expect(h[15].barStart).toBe(false);
+  });
+});
+
+describe("gridModel trackGain (v1.5)", () => {
+  it("exposes each row's trackGain, defaulting to 1", () => {
+    const model = gridModel({
+      voices: [
+        { drum: "bd", hits: [{ step: 0 }], trackGain: 0.6 },
+        { drum: "sd", hits: [{ step: 0 }] },
+      ],
+    });
+    const gains = Object.fromEntries(model.rows.map((r) => [r.drum, r.trackGain]));
+    expect(gains).toEqual({ bd: 0.6, sd: 1 });
+  });
+});

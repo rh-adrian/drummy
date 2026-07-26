@@ -71,3 +71,79 @@ describe("toggleStep", () => {
     expect(JSON.stringify(g)).toBe(before);
   });
 });
+
+// v1.5 FR-4/FR-3: cycle editing + track volume (pure merges).
+
+import { cycleStep, setTrackGain } from "../../src/core/edit.js";
+
+describe("cycleStep", () => {
+  const vel = (g: Groove, drum: string, step: number) =>
+    g.voices.find((v) => v.drum === drum)?.hits.find((h) => h.step === step)?.vel;
+
+  it("adds a normal hit (0.7) on an empty cell", () => {
+    const res = cycleStep(groove(), "bd", 4);
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(vel(res.groove, "bd", 4)).toBe(0.7);
+  });
+
+  it("cycles normal → stress → ghost → off", () => {
+    let g = groove(); // bd has a default-vel (1.0 = stress tier) hit at step 0
+    const r1 = cycleStep(g, "bd", 0); // X → g
+    expect(r1.ok).toBe(true);
+    if (!r1.ok) return;
+    expect(vel(r1.groove, "bd", 0)).toBe(0.25);
+    const r2 = cycleStep(r1.groove, "bd", 0); // g → off
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    expect(vel(r2.groove, "bd", 0)).toBeUndefined();
+    const r3 = cycleStep(r2.groove, "bd", 0); // off → x
+    expect(r3.ok).toBe(true);
+    if (!r3.ok) return;
+    expect(vel(r3.groove, "bd", 0)).toBe(0.7);
+    const r4 = cycleStep(r3.groove, "bd", 0); // x → X
+    expect(r4.ok).toBe(true);
+    if (r4.ok) expect(vel(r4.groove, "bd", 0)).toBe(1);
+  });
+
+  it("snaps LLM-written velocities to the nearest cycle tier before advancing", () => {
+    const base = groove(); // hh step 2 has vel 0.5 → nearest cycle tier is x(0.7) → advance to X
+    const r = cycleStep(base, "hh", 2);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(vel(r.groove, "hh", 2)).toBe(1);
+  });
+
+  it("drops a voice whose last hit cycles off, but refuses to empty the groove", () => {
+    let g = groove();
+    // hh 0.5 → X → g → off (3 clicks) leaves hh empty → voice dropped
+    for (const expected of [1, 0.25]) {
+      const r = cycleStep(g, "hh", 2);
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      g = r.groove;
+      expect(vel(g, "hh", 2)).toBe(expected);
+    }
+    const off = cycleStep(g, "hh", 2);
+    expect(off.ok).toBe(true);
+    if (!off.ok) return;
+    expect(off.groove.voices.some((v) => v.drum === "hh")).toBe(false);
+  });
+
+  it("refuses out-of-range steps and unknown voices with reasons", () => {
+    expect(cycleStep(groove(), "bd", 99).ok).toBe(false);
+    expect(cycleStep(groove(), "sp", 0).ok).toBe(false);
+  });
+});
+
+describe("setTrackGain", () => {
+  it("sets the voice's trackGain and re-validates", () => {
+    const res = setTrackGain(groove(), "hh", 0.6);
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.groove.voices.find((v) => v.drum === "hh")?.trackGain).toBe(0.6);
+  });
+
+  it("rejects gains outside 0..1.5 and unknown drums", () => {
+    expect(setTrackGain(groove(), "hh", 1.6).ok).toBe(false);
+    expect(setTrackGain(groove(), "hh", -0.1).ok).toBe(false);
+    expect(setTrackGain(groove(), "sp", 0.5).ok).toBe(false);
+  });
+});
