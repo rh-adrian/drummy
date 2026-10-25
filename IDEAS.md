@@ -53,3 +53,9 @@ Grid fills currently require at least one hit ("grid has no hits at all" is an
 error). A deliberate all-rest fill = a dramatic full-band STOP at the loop end —
 musically legit (think James Brown hits). If wanted: allow an explicit
 `{"silence": true}` fill form rather than weakening the no-hits validation.
+
+## BPM slider on the page (captured 2026-10-25)
+
+The transport has a BPM number box (v1.6) and the LLM has `set_tempo`. A slider next
+to the box would make tempo feel like the volume faders: drag to find the pocket
+instead of typing numbers. Came up while charting song-tab lookup; unrelated to it.
