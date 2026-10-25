@@ -12,6 +12,10 @@ _Avoid_: Beat, drum track
 Someone's written drum transcription of a specific song, posted on a tab site.
 _Avoid_: Tabs (as a singular), drum chart
 
+**Listing**:
+One tab site's page for a tab, with that site's rating and vote count. The same tab posted on two sites is two listings, each rated on its own.
+_Avoid_: Version, tab page
+
 **Song groove**:
 A groove built from a tab for one section of one specific song, identified by artist and title.
 _Avoid_: Song beat, saved beat, drum track
